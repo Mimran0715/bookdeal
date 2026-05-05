@@ -19,11 +19,20 @@ def main() -> int:
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
+    parser.add_argument("--agent", action="store_true", help="Use the Pydantic AI agent planner.")
+    parser.add_argument(
+        "--model",
+        help="Pydantic AI model name. Default: BOOKDEAL_MODEL or google-gla:gemini-2.5-flash",
+    )
+    parser.add_argument("--logfire", action="store_true", help="Enable Logfire tracing for the agent run.")
     parser.add_argument("--details", action="store_true", help="Show ranking reason, evidence, and scan counts.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args()
 
     book = " ".join(args.book)
+    if args.agent:
+        return _run_agent_mode(book, args)
+
     try:
         candidates = find_book_deals(
             book,
@@ -44,6 +53,30 @@ def main() -> int:
 
     print(_format_output(book, best, backups, candidates, details=args.details))
     return 0 if best else 2
+
+
+def _run_agent_mode(book: str, args: argparse.Namespace) -> int:
+    try:
+        from bookdeal_agent import BookDealAgentError, run_bookdeal_agent
+
+        decision = run_bookdeal_agent(
+            book,
+            max_results=max(1, min(args.max_results, 10)),
+            search_groups=max(1, min(args.search_groups, 5)),
+            location=args.location,
+            language=args.language,
+            model=args.model,
+            enable_logfire=args.logfire,
+        )
+    except (BookDealAgentError, TinyFishError) as exc:
+        print(f"bookdeal agent: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(decision, indent=2))
+    else:
+        print(_format_agent_output(decision, details=args.details))
+    return 0 if decision.get("best") else 2
 
 
 def _json_output(
@@ -122,6 +155,39 @@ def _format_output(
             f"Checked {len(candidates)} candidate prices; filtered {filtered} suspicious/non-print listings.",
         ]
     )
+    return "\n".join(lines)
+
+
+def _format_agent_output(decision: dict[str, object], *, details: bool = False) -> str:
+    best = decision.get("best")
+    if not isinstance(best, dict):
+        return str(decision.get("summary") or "No valid deal found.")
+
+    lines = [
+        str(decision.get("book") or "Book deal"),
+        f"Best: {best.get('total')} | {best.get('condition')} | {best.get('merchant')}",
+        str(best.get("url")),
+    ]
+
+    backups = decision.get("backups")
+    if isinstance(backups, list) and backups:
+        lines.extend(["", "Backups:"])
+        for item in backups[:3]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(f"- {item.get('total')} | {item.get('condition')} | {item.get('merchant')}")
+            lines.append(f"  {item.get('url')}")
+
+    if details:
+        lines.extend(["", "Agent:"])
+        summary = decision.get("summary")
+        if summary:
+            lines.append(f"- {summary}")
+        attempts = decision.get("attempts")
+        if isinstance(attempts, list):
+            for attempt in attempts[:6]:
+                lines.append(f"- {attempt}")
+
     return "\n".join(lines)
 
 
