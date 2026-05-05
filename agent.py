@@ -17,9 +17,9 @@ from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
 SEARCH_ENDPOINT = "https://api.search.tinyfish.ai"
 FETCH_ENDPOINT = "https://api.fetch.tinyfish.ai"
 
-PRICE_RE = re.compile(r"(?<!\w)\$\s*([0-9]{1,4}(?:,[0-9]{3})*(?:\.[0-9]{2})?)")
+PRICE_RE = re.compile(r"(?<!\w)([$£])\s*([0-9]{1,4}(?:,[0-9]{3})*(?:\.[0-9]{2})?)")
 SHIPPING_RE = re.compile(
-    r"(?:\+\s*)?\$\s*([0-9]{1,3}(?:\.[0-9]{2})?)\s*(?:shipping|delivery|ship)",
+    r"(?:\+\s*)?([$£])\s*([0-9]{1,3}(?:\.[0-9]{2})?)\s*(?:shipping|delivery|ship)",
     re.IGNORECASE,
 )
 CONDITION_TERMS = (
@@ -39,6 +39,44 @@ BOOK_MARKETPLACE_TERMS = (
     "shipping",
     "condition",
     "seller",
+)
+US_BOOK_DOMAINS = (
+    "barnesandnoble.com",
+    "amazon.com",
+    "abebooks.com",
+    "thriftbooks.com",
+    "betterworldbooks.com",
+    "bookshop.org",
+    "booksamillion.com",
+    "halfpricebooks.com",
+    "target.com",
+    "walmart.com",
+    "powells.com",
+    "biblio.com",
+    "alibris.com",
+    "ebay.com",
+)
+GB_BOOK_DOMAINS = (
+    "waterstones.com",
+    "blackwells.co.uk",
+    "amazon.co.uk",
+    "abebooks.co.uk",
+    "wob.com",
+    "worldofbooks.com",
+    "bookshop.org",
+    "ebay.co.uk",
+)
+SOCIAL_DOMAINS = (
+    "facebook.com",
+    "instagram.com",
+    "lemon8-app.com",
+    "lemon8.com",
+    "pinterest.com",
+    "reddit.com",
+    "tiktok.com",
+    "twitter.com",
+    "x.com",
+    "youtube.com",
 )
 
 
@@ -127,29 +165,66 @@ def find_book_deals(
     book: str,
     *,
     max_results: int = 8,
+    search_groups: int = 3,
     fetch_pages: bool = True,
     location: str = "US",
     language: str = "en",
     client: TinyFishClient | None = None,
 ) -> list[BookCandidate]:
     client = client or TinyFishClient()
-    query = build_search_query(book)
-    results = client.search(query, location=location, language=language)
-    candidates = extract_from_search_results(book, results[:max_results])
+    domains = domains_for_location(location)
+    results: list[SearchResult] = []
+    for query in build_search_queries(book, domains)[:search_groups]:
+        results.extend(client.search(query, location=location, language=language))
+        if len(allowed_search_results(results, domains)) >= max_results:
+            break
+
+    allowed_results = allowed_search_results(results, domains)[:max_results]
+    candidates = extract_from_search_results(book, allowed_results)
 
     if fetch_pages:
         # Search and fetch are free, but the free tier is rate limited. Fetch only the
         # most promising result URLs, in a single batch, so the CLI stays courteous.
-        urls = [result.url for result in results[:max_results]]
+        urls = [result.url for result in allowed_results]
         pages = client.fetch(urls)
         candidates.extend(extract_from_fetched_pages(book, pages))
 
     return dedupe_candidates(candidates)
 
 
-def build_search_query(book: str) -> str:
+def build_search_query(book: str, domains: Iterable[str] | None = None) -> str:
+    return build_search_queries(book, domains)[0]
+
+
+def build_search_queries(book: str, domains: Iterable[str] | None = None) -> list[str]:
     clean = " ".join(book.split())
-    return f'"{clean}" book price used new shipping ThriftBooks AbeBooks Better World Books Target Walmart'
+    blocked_terms = " ".join(f"-site:{domain}" for domain in SOCIAL_DOMAINS)
+    scoped_domains = tuple(domains or US_BOOK_DOMAINS)
+    queries: list[str] = []
+    for group in _chunks(scoped_domains, 4):
+        domain_terms = " OR ".join(f"site:{domain}" for domain in group)
+        queries.append(
+            f'"{clean}" (paperback OR hardcover OR used OR new) ({domain_terms}) {blocked_terms}'
+        )
+    return queries
+
+
+def domains_for_location(location: str) -> tuple[str, ...]:
+    normalized = location.strip().upper()
+    if normalized in {"GB", "UK", "UNITED KINGDOM"}:
+        return GB_BOOK_DOMAINS
+    return US_BOOK_DOMAINS
+
+
+def allowed_search_results(results: Iterable[SearchResult], domains: Iterable[str]) -> list[SearchResult]:
+    allowed = tuple(domain.lower().removeprefix("www.") for domain in domains)
+    filtered: list[SearchResult] = []
+    for result in results:
+        merchant = merchant_from_url(result.url)
+        host = urllib.parse.urlparse(result.url).netloc.lower().removeprefix("www.")
+        if merchant in allowed or any(host == domain or host.endswith(f".{domain}") for domain in allowed):
+            filtered.append(result)
+    return filtered
 
 
 def extract_from_search_results(book: str, results: Iterable[SearchResult]) -> list[BookCandidate]:
@@ -174,12 +249,15 @@ def extract_from_fetched_pages(book: str, pages: Iterable[dict[str, Any]]) -> li
 
 def _extract_candidates(book: str, url: str, text: str, source: str) -> list[BookCandidate]:
     merchant = merchant_from_url(url)
+    if merchant in SOCIAL_DOMAINS:
+        return []
     trust = trust_for_url(url)
     candidates: list[BookCandidate] = []
     for price_match in PRICE_RE.finditer(text):
         if _is_shipping_price(text, price_match.start(), price_match.end()):
             continue
-        price = _parse_money(price_match.group(1))
+        currency = price_match.group(1)
+        price = _parse_money(price_match.group(2))
         if price is None or price < 0.5 or price > 500:
             continue
 
@@ -187,8 +265,9 @@ def _extract_candidates(book: str, url: str, text: str, source: str) -> list[Boo
         if not _looks_like_book_listing(book, evidence):
             continue
 
-        shipping = _extract_shipping(evidence)
-        condition = _extract_condition(evidence)
+        signal_window = _window(text, price_match.start(), price_match.end(), radius=80)
+        shipping = _extract_shipping(signal_window)
+        condition = _extract_condition(signal_window)
         flags = blocked_flags(evidence)
         candidates.append(
             BookCandidate(
@@ -196,6 +275,7 @@ def _extract_candidates(book: str, url: str, text: str, source: str) -> list[Boo
                 merchant=merchant,
                 url=url,
                 price=price,
+                currency=currency,
                 shipping=shipping,
                 condition=condition,
                 source=source,
@@ -220,7 +300,7 @@ def _extract_shipping(text: str) -> float | None:
         return 0.0
     match = SHIPPING_RE.search(text)
     if match:
-        return _parse_money(match.group(1))
+        return _parse_money(match.group(2))
     return None
 
 
@@ -263,6 +343,17 @@ def dedupe_candidates(candidates: Iterable[BookCandidate]) -> list[BookCandidate
         if current is None or (candidate.source == "fetch" and current.source == "search"):
             seen[key] = candidate
     return list(seen.values())
+
+
+def _chunks(items: Iterable[str], size: int) -> Iterable[tuple[str, ...]]:
+    group: list[str] = []
+    for item in items:
+        group.append(item)
+        if len(group) == size:
+            yield tuple(group)
+            group = []
+    if group:
+        yield tuple(group)
 
 
 def polite_pause(seconds: float = 12.5) -> None:

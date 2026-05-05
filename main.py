@@ -15,6 +15,7 @@ def main() -> int:
     )
     parser.add_argument("book", nargs="+", help='Book title, for example: "Atomic Habits"')
     parser.add_argument("--max-results", type=int, default=8, help="Search results/pages to inspect. Default: 8")
+    parser.add_argument("--search-groups", type=int, default=3, help="Retailer search groups to try. Default: 3")
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
@@ -27,6 +28,7 @@ def main() -> int:
         candidates = find_book_deals(
             book,
             max_results=max(1, min(args.max_results, 10)),
+            search_groups=max(1, min(args.search_groups, 5)),
             fetch_pages=not args.no_fetch,
             location=args.location,
             language=args.language,
@@ -64,6 +66,7 @@ def _candidate_dict(candidate: BookCandidate) -> dict[str, object]:
         "merchant": candidate.merchant,
         "url": candidate.url,
         "price": candidate.price,
+        "currency": candidate.currency,
         "shipping": candidate.shipping,
         "total": round(candidate.total, 2),
         "condition": candidate.condition,
@@ -93,14 +96,14 @@ def _format_output(
 
     lines = [
         f"{book}",
-        f"Best: ${best.total:.2f} total | {best.condition} | {best.merchant}",
+        f"Best: {best.display_total} total | {best.condition} | {best.merchant}",
         best.url,
     ]
 
     if backups:
         lines.extend(["", "Backups:"])
         for candidate in backups:
-            lines.append(f"- ${candidate.total:.2f} | {candidate.condition} | {candidate.merchant}")
+            lines.append(f"- {candidate.display_total} | {candidate.condition} | {candidate.merchant}")
             lines.append(f"  {candidate.url}")
 
     if not details:
@@ -111,7 +114,7 @@ def _format_output(
         [
             "",
             "Details:",
-            f"- Item price: ${best.price:.2f}",
+            f"- Item price: {best.display_price}",
             f"- Shipping: {best.display_shipping}",
             f"- Rank score: {best.score:.2f}",
             f"- Source: TinyFish {best.source}",
