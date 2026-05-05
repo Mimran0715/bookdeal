@@ -63,10 +63,24 @@ The agent can decide to search retailer groups, fetch promising pages, rank extr
 If you use Logfire, authenticate/configure it with the Logfire CLI, then enable tracing:
 
 ```bash
+logfire auth
+logfire projects use
 ./bookdeal "Atomic Habits" --agent --logfire
 ```
 
-You can also set `BOOKDEAL_LOGFIRE="1"` in `.env`.
+You can also enable tracing by default in `.env`:
+
+```bash
+BOOKDEAL_LOGFIRE="1"
+```
+
+To send traces without using `logfire auth`, add a Logfire write token:
+
+```bash
+LOGFIRE_TOKEN="your_logfire_write_token_here"
+```
+
+For basic tracing you want `LOGFIRE_TOKEN`. `LOGFIRE_API_KEY` is different and is mainly for Logfire API features such as managed variables.
 
 ## Ranking
 
