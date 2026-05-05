@@ -1,0 +1,9 @@
+[project]
+name = "bookdeal"
+version = "0.1.0"
+description = "Find the cheapest good book listing using TinyFish Search and Fetch."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100
