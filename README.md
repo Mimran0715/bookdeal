@@ -15,6 +15,12 @@ TINYFISH_API_KEY="your_api_key_here"
 Install dependencies:
 
 ```bash
+pip install -r requirements.txt
+```
+
+Or install the project in editable mode:
+
+```bash
 pip install -e .
 ```
 
