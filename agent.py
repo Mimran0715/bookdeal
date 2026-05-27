@@ -23,6 +23,9 @@ SHIPPING_RE = re.compile(
     re.IGNORECASE,
 )
 CONDITION_TERMS = (
+    "ebook",
+    "e-book",
+    "kindle",
     "like new",
     "very good",
     "acceptable",
@@ -35,6 +38,9 @@ BOOK_MARKETPLACE_TERMS = (
     "new",
     "paperback",
     "hardcover",
+    "ebook",
+    "e-book",
+    "kindle",
     "book",
     "shipping",
     "condition",
@@ -77,6 +83,13 @@ SOCIAL_DOMAINS = (
     "twitter.com",
     "x.com",
     "youtube.com",
+)
+NON_BOOK_RETAIL_HOSTS = (
+    "advertising.amazon.com",
+    "aws.amazon.com",
+    "developer.amazon.com",
+    "music.amazon.com",
+    "sell.amazon.com",
 )
 
 
@@ -198,13 +211,15 @@ def build_search_query(book: str, domains: Iterable[str] | None = None) -> str:
 
 def build_search_queries(book: str, domains: Iterable[str] | None = None) -> list[str]:
     clean = " ".join(book.split())
-    blocked_terms = " ".join(f"-site:{domain}" for domain in SOCIAL_DOMAINS)
+    blocked_terms = " ".join(
+        f"-site:{domain}" for domain in (*SOCIAL_DOMAINS, *NON_BOOK_RETAIL_HOSTS)
+    )
     scoped_domains = tuple(domains or US_BOOK_DOMAINS)
     queries: list[str] = []
     for group in _chunks(scoped_domains, 4):
         domain_terms = " OR ".join(f"site:{domain}" for domain in group)
         queries.append(
-            f'"{clean}" (paperback OR hardcover OR used OR new) ({domain_terms}) {blocked_terms}'
+            f'"{clean}" (paperback OR hardcover OR ebook OR Kindle OR used OR new) ({domain_terms}) {blocked_terms}'
         )
     return queries
 
@@ -222,9 +237,15 @@ def allowed_search_results(results: Iterable[SearchResult], domains: Iterable[st
     for result in results:
         merchant = merchant_from_url(result.url)
         host = urllib.parse.urlparse(result.url).netloc.lower().removeprefix("www.")
+        if _is_non_book_retail_host(host):
+            continue
         if merchant in allowed or any(host == domain or host.endswith(f".{domain}") for domain in allowed):
             filtered.append(result)
     return filtered
+
+
+def _is_non_book_retail_host(host: str) -> bool:
+    return any(host == domain or host.endswith(f".{domain}") for domain in NON_BOOK_RETAIL_HOSTS)
 
 
 def extract_from_search_results(book: str, results: Iterable[SearchResult]) -> list[BookCandidate]:
@@ -249,7 +270,8 @@ def extract_from_fetched_pages(book: str, pages: Iterable[dict[str, Any]]) -> li
 
 def _extract_candidates(book: str, url: str, text: str, source: str) -> list[BookCandidate]:
     merchant = merchant_from_url(url)
-    if merchant in SOCIAL_DOMAINS:
+    host = urllib.parse.urlparse(url).netloc.lower().removeprefix("www.")
+    if merchant in SOCIAL_DOMAINS or _is_non_book_retail_host(host):
         return []
     trust = trust_for_url(url)
     candidates: list[BookCandidate] = []
@@ -312,6 +334,8 @@ def _is_shipping_price(text: str, start: int, end: int) -> bool:
 
 def _extract_condition(text: str) -> str:
     lowered = text.lower()
+    if "ebook" in lowered or "e-book" in lowered or "kindle" in lowered:
+        return "ebook"
     for term in CONDITION_TERMS:
         if term in lowered:
             return term

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shlex
 import sys
 
 from agent import TinyFishError, find_book_deals
@@ -27,9 +29,9 @@ def main() -> int:
     parser.add_argument("--logfire", action="store_true", help="Enable Logfire tracing for the agent run.")
     parser.add_argument("--details", action="store_true", help="Show ranking reason, evidence, and scan counts.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
-    args = parser.parse_args()
+    args = parser.parse_args(_normalize_argv(sys.argv[1:]))
 
-    book = " ".join(args.book)
+    book = _clean_book_title(args.book)
     if args.agent:
         return _run_agent_mode(book, args)
 
@@ -53,6 +55,23 @@ def main() -> int:
 
     print(_format_output(book, best, backups, candidates, details=args.details))
     return 0 if best else 2
+
+
+def _normalize_argv(argv: list[str]) -> list[str]:
+    aliases = {
+        "-agent": "--agent",
+        "-details": "--details",
+        "-json": "--json",
+        "-no-fetch": "--no-fetch",
+        "-logfire": "--logfire",
+    }
+    normalized: list[str] = []
+    for arg in argv:
+        if re.fullmatch(r"-\d+", arg):
+            normalized.extend(["--max-results", arg[1:]])
+            continue
+        normalized.append(aliases.get(arg, arg))
+    return normalized
 
 
 def _run_agent_mode(book: str, args: argparse.Namespace) -> int:
@@ -79,6 +98,46 @@ def _run_agent_mode(book: str, args: argparse.Namespace) -> int:
     return 0 if decision.get("best") else 2
 
 
+def _clean_book_title(parts: list[str]) -> str:
+    tokens = shlex.split(" ".join(parts))
+    cleaned: list[str] = []
+    skip_next = False
+    options_with_values = {
+        "--max-results",
+        "--search-groups",
+        "--location",
+        "--language",
+        "--model",
+    }
+    flag_options = {
+        "--agent",
+        "-agent",
+        "--details",
+        "-details",
+        "--json",
+        "-json",
+        "--no-fetch",
+        "-no-fetch",
+        "--logfire",
+        "-logfire",
+    }
+
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if token in options_with_values:
+            skip_next = True
+            continue
+        if any(token.startswith(f"{option}=") for option in options_with_values):
+            continue
+        if token in flag_options or re.fullmatch(r"-\d+", token):
+            continue
+        cleaned.append(token)
+
+    return " ".join(cleaned).strip() or " ".join(parts).strip()
+
+
 def _json_output(
     book: str,
     best: BookCandidate | None,
@@ -102,6 +161,7 @@ def _candidate_dict(candidate: BookCandidate) -> dict[str, object]:
         "currency": candidate.currency,
         "shipping": candidate.shipping,
         "total": round(candidate.total, 2),
+        "format": candidate.format,
         "condition": candidate.condition,
         "trust": candidate.trust,
         "score": round(candidate.score, 2),
@@ -123,20 +183,20 @@ def _format_output(
         if details:
             return (
                 f"No valid deal found for {book!r}.\n"
-                f"Checked {len(candidates)} candidate prices; filtered {filtered} suspicious/non-print listings."
+                f"Checked {len(candidates)} candidate prices; filtered {filtered} suspicious listings."
             )
         return f"No valid deal found for {book!r}."
 
     lines = [
         f"{book}",
-        f"Best: {best.display_total} total | {best.condition} | {best.merchant}",
+        f"Best: {best.display_total} total | {_candidate_label(best)} | {best.merchant}",
         best.url,
     ]
 
     if backups:
         lines.extend(["", "Backups:"])
         for candidate in backups:
-            lines.append(f"- {candidate.display_total} | {candidate.condition} | {candidate.merchant}")
+            lines.append(f"- {candidate.display_total} | {_candidate_label(candidate)} | {candidate.merchant}")
             lines.append(f"  {candidate.url}")
 
     if not details:
@@ -147,12 +207,13 @@ def _format_output(
         [
             "",
             "Details:",
+            f"- Format: {best.format}",
             f"- Item price: {best.display_price}",
             f"- Shipping: {best.display_shipping}",
             f"- Rank score: {best.score:.2f}",
             f"- Source: TinyFish {best.source}",
             f"- Evidence: {best.evidence or 'price found in TinyFish result'}",
-            f"Checked {len(candidates)} candidate prices; filtered {filtered} suspicious/non-print listings.",
+            f"Checked {len(candidates)} candidate prices; filtered {filtered} suspicious listings.",
         ]
     )
     return "\n".join(lines)
@@ -165,7 +226,7 @@ def _format_agent_output(decision: dict[str, object], *, details: bool = False) 
 
     lines = [
         str(decision.get("book") or "Book deal"),
-        f"Best: {best.get('total')} | {best.get('condition')} | {best.get('merchant')}",
+        f"Best: {best.get('total')} | {_deal_label(best)} | {best.get('merchant')}",
         str(best.get("url")),
     ]
 
@@ -175,7 +236,7 @@ def _format_agent_output(decision: dict[str, object], *, details: bool = False) 
         for item in backups[:3]:
             if not isinstance(item, dict):
                 continue
-            lines.append(f"- {item.get('total')} | {item.get('condition')} | {item.get('merchant')}")
+            lines.append(f"- {item.get('total')} | {_deal_label(item)} | {item.get('merchant')}")
             lines.append(f"  {item.get('url')}")
 
     if details:
@@ -189,6 +250,27 @@ def _format_agent_output(decision: dict[str, object], *, details: bool = False) 
                 lines.append(f"- {attempt}")
 
     return "\n".join(lines)
+
+
+def _candidate_label(candidate: BookCandidate) -> str:
+    if candidate.format == candidate.condition:
+        return candidate.format
+    return f"{candidate.format} | {candidate.condition}"
+
+
+def _deal_label(item: dict[str, object]) -> str:
+    deal_format = _deal_format(item)
+    condition = str(item.get("condition") or "unknown")
+    if deal_format == condition:
+        return deal_format
+    return f"{deal_format} | {condition}"
+
+
+def _deal_format(item: dict[str, object]) -> str:
+    value = item.get("format")
+    if value:
+        return str(value)
+    return "ebook" if item.get("condition") == "ebook" else "print"
 
 
 if __name__ == "__main__":

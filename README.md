@@ -1,8 +1,8 @@
 # bookdeal
 
-Find the cheapest good option for a book using TinyFish Search and Fetch.
+Find the cheapest good option for a book or ebook using TinyFish Search and Fetch.
 
-The CLI searches live marketplace pages, fetches the most promising results, extracts prices/conditions/shipping signals, filters suspicious formats like ebooks and summaries, then ranks for the cheapest reasonable total.
+The CLI searches live marketplace pages, fetches the most promising results, extracts prices/conditions/shipping signals, filters suspicious listings like audiobooks and summaries, then ranks for the cheapest reasonable total.
 
 ## Setup
 
@@ -44,9 +44,37 @@ BOOKDEAL_MODEL="google-gla:gemini-2.5-flash"
 
 To run it as `bookdeal "Atomic Habits"` from anywhere, add this folder to your `PATH` or symlink the `bookdeal` executable into a folder already on your `PATH`.
 
-By default, `bookdeal` searches known book retailers only, filters social sites before fetch, and prints only the best link plus backup links. Use `--details` to show evidence, scan counts, and ranking signals. Use `--no-fetch` for a faster snippet-only pass.
+By default, `bookdeal` searches known book retailers only, includes print books and ebooks, filters social sites before fetch, and prints only the best link plus backup links. Use `--details` to show evidence, scan counts, and ranking signals. Use `--no-fetch` for a faster snippet-only pass.
 
 US searches target sites like Barnes & Noble, Amazon, AbeBooks, ThriftBooks, Better World Books, Bookshop, Books-A-Million, Half Price Books, Target, Walmart, Powell's, Biblio, Alibris, and eBay. `--location GB` switches to sites like Waterstones, Blackwell's, Amazon UK, AbeBooks UK, Wob, World of Books, Bookshop, and eBay UK.
+
+Current US retailer list:
+
+- barnesandnoble.com
+- amazon.com
+- abebooks.com
+- thriftbooks.com
+- betterworldbooks.com
+- bookshop.org
+- booksamillion.com
+- halfpricebooks.com
+- target.com
+- walmart.com
+- powells.com
+- biblio.com
+- alibris.com
+- ebay.com
+
+Current GB retailer list:
+
+- waterstones.com
+- blackwells.co.uk
+- amazon.co.uk
+- abebooks.co.uk
+- wob.com
+- worldofbooks.com
+- bookshop.org
+- ebay.co.uk
 
 ## Agent Mode
 
@@ -92,4 +120,4 @@ For basic tracing you want `LOGFIRE_TOKEN`. `LOGFIRE_API_KEY` is different and i
 - merchant trust penalty
 - suspicious listing penalty
 
-Listings with terms like `ebook`, `audiobook`, `summary`, `study guide`, `pdf`, or `rental` are filtered out before choosing the best deal.
+Listings with terms like `audiobook`, `summary`, `study guide`, `pdf`, or `rental` are filtered out before choosing the best deal. Ebook and Kindle listings are allowed and do not receive a missing-shipping penalty.

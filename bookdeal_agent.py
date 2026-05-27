@@ -47,6 +47,7 @@ def run_bookdeal_agent(
         merchant: str
         url: str
         total: str
+        format: str = Field(default="print", description="Either print or ebook.")
         condition: str
         reason: str = Field(default="", description="Short reason this link is useful.")
 
@@ -63,12 +64,12 @@ def run_bookdeal_agent(
         model_name,
         output_type=DealDecision,
         instructions=(
-            "You are BookDealAgent. Your goal is to find the cheapest good print-book deal. "
+            "You are BookDealAgent. Your goal is to find the cheapest good book or ebook deal. "
             "Use the tools instead of guessing. Start with retailer_search, then fetch_and_extract "
             "for promising URLs, then rank_candidates. If no candidates are found, retry with more "
-            "retailer groups or the other supported location when that is reasonable. Prefer print "
-            "books over ebooks, audiobooks, summaries, study guides, rentals, or suspicious listings. "
-            "Return a minimal answer focused on links."
+            "retailer groups or the other supported location when that is reasonable. Include print "
+            "books and ebooks, but avoid audiobooks, summaries, study guides, rentals, or suspicious listings. "
+            "Return a minimal answer focused on links and label each deal as print or ebook."
         ),
     )
 
@@ -120,7 +121,7 @@ def run_bookdeal_agent(
         }
 
     prompt = (
-        f"Find the cheapest good print-book deal for: {book!r}. "
+        f"Find the cheapest good book or ebook deal for: {book!r}. "
         f"Preferred location: {location}. Inspect up to {max_results} retailer URLs. "
         "If snippets have candidates, include them with fetched candidates before ranking."
     )
@@ -143,6 +144,7 @@ def _candidate_dict(candidate: BookCandidate | None) -> dict[str, Any] | None:
         "shipping": candidate.shipping,
         "total": candidate.total,
         "display_total": candidate.display_total,
+        "format": candidate.format,
         "condition": candidate.condition,
         "source": candidate.source,
         "evidence": candidate.evidence,
@@ -153,6 +155,9 @@ def _candidate_dict(candidate: BookCandidate | None) -> dict[str, Any] | None:
 
 
 def _candidate_from_dict(data: dict[str, Any]) -> BookCandidate:
+    condition = str(data.get("condition") or "unknown")
+    if str(data.get("format") or "").lower() == "ebook":
+        condition = "ebook"
     return BookCandidate(
         title=str(data.get("title") or ""),
         merchant=str(data.get("merchant") or "unknown"),
@@ -160,7 +165,7 @@ def _candidate_from_dict(data: dict[str, Any]) -> BookCandidate:
         price=float(data.get("price") or 0),
         currency=str(data.get("currency") or "$"),
         shipping=_optional_float(data.get("shipping")),
-        condition=str(data.get("condition") or "unknown"),
+        condition=condition,
         source=str(data.get("source") or "agent"),
         evidence=str(data.get("evidence") or ""),
         trust=float(data.get("trust") or 0.5),

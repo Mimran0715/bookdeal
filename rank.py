@@ -29,6 +29,7 @@ TRUSTED_MERCHANTS = {
 }
 
 CONDITION_SCORES = {
+    "ebook": 0.4,
     "new": 0,
     "like new": 0.4,
     "very good": 0.8,
@@ -41,9 +42,6 @@ CONDITION_SCORES = {
 BLOCKED_TERMS = (
     "audiobook",
     "audio book",
-    "ebook",
-    "e-book",
-    "kindle",
     "pdf",
     "summary",
     "study guide",
@@ -81,6 +79,8 @@ class BookCandidate:
 
     @property
     def display_shipping(self) -> str:
+        if self.condition == "ebook" and self.shipping is None:
+            return "no shipping"
         if self.shipping is None:
             return "shipping unknown"
         if self.shipping == 0:
@@ -88,10 +88,14 @@ class BookCandidate:
         return f"{self.currency}{self.shipping:.2f} shipping"
 
     @property
+    def format(self) -> str:
+        return "ebook" if self.condition == "ebook" else "print"
+
+    @property
     def score(self) -> float:
         trust_penalty = max(0.0, 1.0 - self.trust) * 3
         condition_penalty = CONDITION_SCORES.get(self.condition, CONDITION_SCORES["unknown"])
-        shipping_penalty = 2.0 if self.shipping is None else 0.0
+        shipping_penalty = 0.0 if self.condition == "ebook" else 2.0 if self.shipping is None else 0.0
         flag_penalty = len(self.flags) * 2.5
         return self.total + trust_penalty + condition_penalty + shipping_penalty + flag_penalty
 
