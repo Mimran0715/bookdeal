@@ -1,0 +1,21 @@
+BookDeal Performance Test
+=========================
+Books tested: 10 | Successes: 10 | Success rate: 1.000
+Average runtime: 6.2899s | Median runtime: 5.2280s | Total runtime: 62.8997s
+Average candidates: 26.0 | Average filtered: 1.3 | Average valid ranked: 2.4
+Savings examples: 6 | Average savings: $6.99 | Best example: Sapiens saved $18.10 vs amazon.com
+Config: location=US, format=any, fetch=on, max_results=8, search_groups=3
+Book source: books_100.txt
+
+Book                                    | Status | Runtime  | Markets | Search | Fetched | Candidates | Filtered                | Ranked | Best                | Savings                     
+----------------------------------------+--------+----------+---------+--------+---------+------------+-------------------------+--------+---------------------+-----------------------------
+Atomic Habits                           | ok     | 14.4263s | 4       | 10     | 8       | 21         | 3 (rent:3)              | 3      | 5.07 @ amazon.com   | $2.94 vs amazon.com         
+The 7 Habits of Highly Effective People | ok     | 8.2433s  | 4       | 10     | 8       | 65         | 1 (rent:1)              | 5      | 3.57 @ amazon.com   | $2.92 vs amazon.com         
+Deep Work                               | ok     | 7.4882s  | 4       | 10     | 8       | 35         | 0                       | 2      | 2.99 @ amazon.com   | $1.61 vs amazon.com         
+The Psychology of Money                 | ok     | 5.0711s  | 4       | 10     | 7       | 18         | 2 (rent:2)              | 2      | 7.49 @ amazon.com   | $12.51 vs barnesandnoble.com
+Rich Dad Poor Dad                       | ok     | 3.7464s  | 4       | 10     | 8       | 2          | 0                       | 1      | 107.97 @ amazon.com | -                           
+Think and Grow Rich                     | ok     | 2.4827s  | 4       | 10     | 8       | 7          | 0                       | 2      | 1.12 @ amazon.com   | $3.88 vs barnesandnoble.com 
+The Power of Habit                      | ok     | 5.0505s  | 4       | 10     | 8       | 39         | 0                       | 3      | 1.77 @ amazon.com   | -                           
+How to Win Friends and Influence People | ok     | 5.1175s  | 4       | 10     | 8       | 20         | 7 (audiobook:4, rent:3) | 1      | 2.18 @ amazon.com   | -                           
+Sapiens                                 | ok     | 5.3386s  | 4       | 10     | 8       | 20         | 0                       | 2      | 12.38 @ amazon.com  | $18.10 vs amazon.com        
+Homo Deus                               | ok     | 5.9346s  | 4       | 10     | 8       | 33         | 0                       | 3      | 2.74 @ amazon.com   | - 

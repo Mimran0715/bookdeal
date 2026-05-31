@@ -120,7 +120,11 @@ def blocked_flags(text: str) -> tuple[str, ...]:
     return tuple(term for term in BLOCKED_TERMS if term in lowered)
 
 
-def choose_best(candidates: Iterable[BookCandidate]) -> tuple[BookCandidate | None, list[BookCandidate]]:
+def choose_best(
+    candidates: Iterable[BookCandidate],
+    *,
+    limit: int = 4,
+) -> tuple[BookCandidate | None, list[BookCandidate]]:
     valid = [candidate for candidate in candidates if not candidate.flags]
     ranked = []
     seen_urls: set[str] = set()
@@ -130,5 +134,5 @@ def choose_best(candidates: Iterable[BookCandidate]) -> tuple[BookCandidate | No
         ranked.append(candidate)
         seen_urls.add(candidate.url)
     best = ranked[0] if ranked else None
-    backups = ranked[1:4] if best else []
+    backups = ranked[1:max(1, limit)] if best else []
     return best, backups

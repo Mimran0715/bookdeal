@@ -27,6 +27,8 @@ def run_bookdeal_agent(
     language: str = "en",
     max_results: int = 8,
     search_groups: int = 3,
+    format_filter: str = "any",
+    result_limit: int = 4,
     model: str | None = None,
     enable_logfire: bool = False,
 ) -> dict[str, Any]:
@@ -69,6 +71,7 @@ def run_bookdeal_agent(
             "for promising URLs, then rank_candidates. If no candidates are found, retry with more "
             "retailer groups or the other supported location when that is reasonable. Include print "
             "books and ebooks, but avoid audiobooks, summaries, study guides, rentals, or suspicious listings. "
+            f"Requested format filter: {format_filter}. When it is not any, only return matching deals. "
             "Return a minimal answer focused on links and label each deal as print or ebook."
         ),
     )
@@ -112,18 +115,22 @@ def run_bookdeal_agent(
     def rank_candidates(candidates: list[dict[str, Any]]) -> dict[str, Any]:
         """Rank extracted book candidates and return the best deal plus backups."""
         hydrated = [_candidate_from_dict(candidate) for candidate in candidates]
-        best, backups = choose_best(hydrated)
+        if format_filter != "any":
+            hydrated = [candidate for candidate in hydrated if candidate.format == format_filter]
+        best, backups = choose_best(hydrated, limit=max(1, min(result_limit, 10)))
         return {
             "best": _candidate_dict(best) if best else None,
             "backups": [_candidate_dict(candidate) for candidate in backups],
             "candidate_count": len(hydrated),
             "filtered_count": len([candidate for candidate in hydrated if candidate.flags]),
+            "format_filter": format_filter,
         }
 
+    format_prompt = "" if format_filter == "any" else f" Only consider {format_filter} deals."
     prompt = (
         f"Find the cheapest good book or ebook deal for: {book!r}. "
         f"Preferred location: {location}. Inspect up to {max_results} retailer URLs. "
-        "If snippets have candidates, include them with fetched candidates before ranking."
+        f"If snippets have candidates, include them with fetched candidates before ranking.{format_prompt}"
     )
     result = agent.run_sync(
         prompt,

@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
@@ -16,6 +16,7 @@ from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
 
 SEARCH_ENDPOINT = "https://api.search.tinyfish.ai"
 FETCH_ENDPOINT = "https://api.fetch.tinyfish.ai"
+SEARCH_DOMAIN_GROUP_SIZE = 4
 
 PRICE_RE = re.compile(r"(?<!\w)([$£])\s*([0-9]{1,4}(?:,[0-9]{3})*(?:\.[0-9]{2})?)")
 SHIPPING_RE = re.compile(
@@ -106,6 +107,37 @@ class TinyFishError(RuntimeError):
     pass
 
 
+@dataclass
+class PipelineStats:
+    marketplaces_queried: int = 0
+    search_groups_queried: int = 0
+    search_results_returned: int = 0
+    search_results_allowed: int = 0
+    pages_fetch_requested: int = 0
+    pages_fetched: int = 0
+    candidates_extracted: int = 0
+    candidates_deduped: int = 0
+    listings_filtered: int = 0
+    filter_reasons: dict[str, int] = field(default_factory=dict)
+    final_valid_listings_ranked: int = 0
+    total_seconds: float = 0.0
+    timings: dict[str, float] = field(
+        default_factory=lambda: {
+            "search": 0.0,
+            "fetch": 0.0,
+            "extraction_filtering": 0.0,
+            "ranking": 0.0,
+            "total": 0.0,
+        }
+    )
+
+
+@dataclass
+class DealSearchResult:
+    candidates: list[BookCandidate]
+    stats: PipelineStats
+
+
 class TinyFishClient:
     def __init__(self, api_key: str | None = None, timeout: int = 150) -> None:
         load_env()
@@ -184,25 +216,89 @@ def find_book_deals(
     language: str = "en",
     client: TinyFishClient | None = None,
 ) -> list[BookCandidate]:
+    return find_book_deals_with_stats(
+        book,
+        max_results=max_results,
+        search_groups=search_groups,
+        fetch_pages=fetch_pages,
+        location=location,
+        language=language,
+        client=client,
+    ).candidates
+
+
+def find_book_deals_with_stats(
+    book: str,
+    *,
+    max_results: int = 8,
+    search_groups: int = 3,
+    fetch_pages: bool = True,
+    location: str = "US",
+    language: str = "en",
+    client: TinyFishClient | None = None,
+    debug: bool = False,
+) -> DealSearchResult:
+    total_started = time.perf_counter()
     client = client or TinyFishClient()
     domains = domains_for_location(location)
+    stats = PipelineStats()
     results: list[SearchResult] = []
+
+    search_started = time.perf_counter()
     for query in build_search_queries(book, domains)[:search_groups]:
+        _debug(debug, f"search: querying retailer group {stats.search_groups_queried + 1}")
         results.extend(client.search(query, location=location, language=language))
+        stats.search_groups_queried += 1
         if len(allowed_search_results(results, domains)) >= max_results:
             break
+    stats.timings["search"] = _elapsed(search_started)
+    stats.marketplaces_queried = min(len(domains), stats.search_groups_queried * SEARCH_DOMAIN_GROUP_SIZE)
+    stats.search_results_returned = len(results)
 
     allowed_results = allowed_search_results(results, domains)[:max_results]
+    stats.search_results_allowed = len(allowed_results)
+
+    extraction_started = time.perf_counter()
+    _debug(debug, f"extraction: scanning {len(allowed_results)} search results")
     candidates = extract_from_search_results(book, allowed_results)
+    stats.candidates_extracted = len(candidates)
+    stats.timings["extraction_filtering"] += _elapsed(extraction_started)
 
     if fetch_pages:
         # Search and fetch are free, but the free tier is rate limited. Fetch only the
         # most promising result URLs, in a single batch, so the CLI stays courteous.
         urls = [result.url for result in allowed_results]
+        stats.pages_fetch_requested = len(urls)
+        fetch_started = time.perf_counter()
+        _debug(debug, f"fetch: fetching {len(urls)} pages")
         pages = client.fetch(urls)
-        candidates.extend(extract_from_fetched_pages(book, pages))
+        stats.timings["fetch"] = _elapsed(fetch_started)
+        stats.pages_fetched = len(pages)
 
-    return dedupe_candidates(candidates)
+        extraction_started = time.perf_counter()
+        _debug(debug, f"extraction: scanning {len(pages)} fetched pages")
+        fetched_candidates = extract_from_fetched_pages(book, pages)
+        stats.candidates_extracted += len(fetched_candidates)
+        candidates.extend(fetched_candidates)
+        stats.timings["extraction_filtering"] += _elapsed(extraction_started)
+
+    dedupe_started = time.perf_counter()
+    deduped = dedupe_candidates(candidates)
+    stats.timings["extraction_filtering"] += _elapsed(dedupe_started)
+    stats.candidates_deduped = len(deduped)
+    stats.total_seconds = _elapsed(total_started)
+    stats.timings["total"] = stats.total_seconds
+    _debug(debug, f"pipeline: extracted {stats.candidates_extracted}, deduped to {stats.candidates_deduped}")
+    return DealSearchResult(candidates=deduped, stats=stats)
+
+
+def _elapsed(started: float) -> float:
+    return round(time.perf_counter() - started, 4)
+
+
+def _debug(enabled: bool, message: str) -> None:
+    if enabled:
+        print(f"[bookdeal debug] {message}", file=sys.stderr)
 
 
 def build_search_query(book: str, domains: Iterable[str] | None = None) -> str:
@@ -216,7 +312,7 @@ def build_search_queries(book: str, domains: Iterable[str] | None = None) -> lis
     )
     scoped_domains = tuple(domains or US_BOOK_DOMAINS)
     queries: list[str] = []
-    for group in _chunks(scoped_domains, 4):
+    for group in _chunks(scoped_domains, SEARCH_DOMAIN_GROUP_SIZE):
         domain_terms = " OR ".join(f"site:{domain}" for domain in group)
         queries.append(
             f'"{clean}" (paperback OR hardcover OR ebook OR Kindle OR used OR new) ({domain_terms}) {blocked_terms}'
@@ -240,6 +336,8 @@ def allowed_search_results(results: Iterable[SearchResult], domains: Iterable[st
         if _is_non_book_retail_host(host):
             continue
         if merchant in allowed or any(host == domain or host.endswith(f".{domain}") for domain in allowed):
+            if _is_search_or_category_url(result.url):
+                continue
             filtered.append(result)
     return filtered
 
@@ -272,6 +370,8 @@ def _extract_candidates(book: str, url: str, text: str, source: str) -> list[Boo
     merchant = merchant_from_url(url)
     host = urllib.parse.urlparse(url).netloc.lower().removeprefix("www.")
     if merchant in SOCIAL_DOMAINS or _is_non_book_retail_host(host):
+        return []
+    if not _is_specific_listing_url(url):
         return []
     trust = trust_for_url(url)
     candidates: list[BookCandidate] = []
@@ -307,6 +407,50 @@ def _extract_candidates(book: str, url: str, text: str, source: str) -> list[Boo
             )
         )
     return candidates
+
+
+def _is_specific_listing_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    merchant = merchant_from_url(url)
+    path = parsed.path.rstrip("/")
+    query = urllib.parse.parse_qs(parsed.query)
+
+    if _is_search_or_category_url(url):
+        return False
+
+    if merchant in {"amazon.com", "amazon.co.uk"}:
+        return bool(
+            re.search(r"/(?:dp|gp/product|kindle-dbs/product)/[A-Z0-9]{10}(?:/|$)", path)
+            or re.search(r"/[A-Z0-9]{10}(?:/|$)", path)
+        )
+
+    if merchant in {"ebay.com", "ebay.co.uk"}:
+        return "/itm/" in path
+
+    return bool(path and path != "/")
+
+
+def _is_search_or_category_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    merchant = merchant_from_url(url)
+    path = parsed.path.rstrip("/")
+    query = urllib.parse.parse_qs(parsed.query)
+
+    if merchant in {"amazon.com", "amazon.co.uk"}:
+        return path in {"", "/", "/s"} or "k" in query
+
+    blocked_path_parts = (
+        "/search",
+        "/search/",
+        "/catalogsearch",
+        "/collections",
+        "/category",
+        "/categories",
+    )
+    if any(part in path.lower() for part in blocked_path_parts):
+        return True
+
+    return False
 
 
 def _parse_money(value: str) -> float | None:
