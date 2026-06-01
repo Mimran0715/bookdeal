@@ -5,7 +5,10 @@ import json
 import sys
 
 from performance_test import (
+    DEFAULT_FETCH_URLS_PER_MINUTE,
     DEFAULT_BOOK_FILE,
+    DEFAULT_SEARCH_REQUESTS_PER_MINUTE,
+    TinyFishRateLimiter,
     format_agent_report,
     load_books,
     run_agent_performance_check,
@@ -22,11 +25,28 @@ def main() -> int:
     parser.add_argument(
         "--book-file",
         default=str(DEFAULT_BOOK_FILE),
-        help="Newline-delimited book list. Default: books_100.txt when present.",
+        help="Newline-delimited book list. Default: test/books_100.txt.",
     )
     parser.add_argument("--limit", type=int, help="Only run the first N books from the selected list.")
     parser.add_argument("--max-results", type=int, default=8, help="Retailer URLs/deals to inspect. Default: 8")
     parser.add_argument("--search-groups", type=int, default=3, help="Retailer search groups to query. Default: 3")
+    parser.add_argument(
+        "--search-requests-per-minute",
+        type=int,
+        default=DEFAULT_SEARCH_REQUESTS_PER_MINUTE,
+        help="TinyFish Search request budget. Default: 30/minute.",
+    )
+    parser.add_argument(
+        "--fetch-urls-per-minute",
+        type=int,
+        default=DEFAULT_FETCH_URLS_PER_MINUTE,
+        help="TinyFish Fetch URL budget. Default: 150 URLs/minute.",
+    )
+    parser.add_argument(
+        "--no-rate-limit",
+        action="store_true",
+        help="Disable free-tier pacing. Not recommended for full-list runs.",
+    )
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
     parser.add_argument(
@@ -64,6 +84,9 @@ def main() -> int:
         format_filter="print" if args.format == "physical" else args.format,
         model=args.model,
         enable_logfire=args.logfire,
+        rate_limiter=None
+        if args.no_rate_limit
+        else TinyFishRateLimiter(args.search_requests_per_minute, args.fetch_urls_per_minute),
     )
 
     if args.json:

@@ -5,15 +5,22 @@ import json
 import sys
 import time
 from collections import Counter
+from collections import deque
 from pathlib import Path
 from typing import Any
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from agent import PipelineStats, TinyFishError, find_book_deals_with_stats
 from main import _candidate_dict, _filter_candidates_by_format
 from rank import BookCandidate, choose_best
 
 
-DEFAULT_BOOK_FILE = Path("books_100.txt")
+DEFAULT_BOOK_FILE = Path(__file__).resolve().with_name("books_100.txt")
+DEFAULT_SEARCH_REQUESTS_PER_MINUTE = 30
+DEFAULT_FETCH_URLS_PER_MINUTE = 150
 DEFAULT_BOOKS = (
     "Atomic Habits",
     "Deep Work",
@@ -44,11 +51,28 @@ def main() -> int:
     parser.add_argument(
         "--book-file",
         default=str(DEFAULT_BOOK_FILE),
-        help="Newline-delimited book list. Default: books_100.txt when present.",
+        help="Newline-delimited book list. Default: test/books_100.txt.",
     )
     parser.add_argument("--limit", type=int, help="Only run the first N books from the selected list.")
     parser.add_argument("--max-results", type=int, default=8, help="Search results/pages to inspect. Default: 8")
     parser.add_argument("--search-groups", type=int, default=3, help="Retailer search groups to query. Default: 3")
+    parser.add_argument(
+        "--search-requests-per-minute",
+        type=int,
+        default=DEFAULT_SEARCH_REQUESTS_PER_MINUTE,
+        help="TinyFish Search request budget. Default: 30/minute.",
+    )
+    parser.add_argument(
+        "--fetch-urls-per-minute",
+        type=int,
+        default=DEFAULT_FETCH_URLS_PER_MINUTE,
+        help="TinyFish Fetch URL budget. Default: 150 URLs/minute.",
+    )
+    parser.add_argument(
+        "--no-rate-limit",
+        action="store_true",
+        help="Disable free-tier pacing. Not recommended for full-list runs.",
+    )
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
@@ -85,6 +109,9 @@ def main() -> int:
         "location": args.location,
         "language": args.language,
         "format_filter": "print" if args.format == "physical" else args.format,
+        "rate_limiter": None
+        if args.no_rate_limit
+        else TinyFishRateLimiter(args.search_requests_per_minute, args.fetch_urls_per_minute),
     }
     if args.agent:
         report = run_agent_performance_check(
@@ -127,11 +154,17 @@ def run_performance_check(
     location: str,
     language: str,
     format_filter: str,
+    rate_limiter: TinyFishRateLimiter | None,
 ) -> dict[str, Any]:
     runs: list[dict[str, Any]] = []
     started = time.perf_counter()
 
     for book in books:
+        if rate_limiter is not None:
+            rate_limiter.wait_for_book(
+                search_requests=search_groups,
+                fetch_urls=max_results if fetch_pages else 0,
+            )
         run_started = time.perf_counter()
         try:
             result = find_book_deals_with_stats(
@@ -186,6 +219,7 @@ def run_performance_check(
             "location": location,
             "language": language,
             "format_filter": format_filter,
+            "rate_limit": rate_limiter.config() if rate_limiter is not None else {"enabled": False},
         },
         "summary": summarize(runs, total_seconds=elapsed(started)),
         "runs": runs,
@@ -203,6 +237,7 @@ def run_agent_performance_check(
     format_filter: str,
     model: str | None,
     enable_logfire: bool,
+    rate_limiter: TinyFishRateLimiter | None,
 ) -> dict[str, Any]:
     try:
         from bookdeal_agent import BookDealAgentError, run_bookdeal_agent
@@ -213,6 +248,11 @@ def run_agent_performance_check(
     started = time.perf_counter()
 
     for book in books:
+        if rate_limiter is not None:
+            rate_limiter.wait_for_book(
+                search_requests=search_groups,
+                fetch_urls=max_results,
+            )
         run_started = time.perf_counter()
         try:
             decision = run_bookdeal_agent(
@@ -262,6 +302,7 @@ def run_agent_performance_check(
             "format_filter": format_filter,
             "model": model or "BOOKDEAL_MODEL/default",
             "logfire": enable_logfire,
+            "rate_limit": rate_limiter.config() if rate_limiter is not None else {"enabled": False},
         },
         "summary": summarize_agent_runs(runs, total_seconds=elapsed(started)),
         "runs": runs,
@@ -398,6 +439,7 @@ def format_report(report: dict[str, Any]) -> str:
         f"Config: location={config['location']}, format={config['format_filter']}, "
         f"fetch={'on' if config['fetch_pages'] else 'off'}, max_results={config['max_results']}, "
         f"search_groups={config['search_groups']}",
+        rate_limit_summary(config),
         f"Book source: {config['book_source']}",
         "",
         table(
@@ -439,6 +481,7 @@ def format_agent_report(report: dict[str, Any]) -> str:
         f"Config: location={config['location']}, format={config['format_filter']}, "
         f"max_results={config['max_results']}, search_groups={config['search_groups']}, "
         f"model={config['model']}",
+        rate_limit_summary(config),
         f"Book source: {config['book_source']}",
         "",
         table(
@@ -513,10 +556,74 @@ def load_books(raw_books: list[str], book_file: str, limit: int | None) -> tuple
     return apply_limit(DEFAULT_BOOKS, limit), "built-in fallback"
 
 
+class TinyFishRateLimiter:
+    def __init__(self, search_requests_per_minute: int, fetch_urls_per_minute: int) -> None:
+        self.search_limiter = SlidingWindowLimiter(search_requests_per_minute, "Search requests")
+        self.fetch_limiter = SlidingWindowLimiter(fetch_urls_per_minute, "Fetch URLs")
+
+    def wait_for_book(self, *, search_requests: int, fetch_urls: int) -> None:
+        self.search_limiter.acquire(search_requests)
+        self.fetch_limiter.acquire(fetch_urls)
+
+    def config(self) -> dict[str, object]:
+        return {
+            "enabled": True,
+            "search_requests_per_minute": self.search_limiter.limit,
+            "fetch_urls_per_minute": self.fetch_limiter.limit,
+        }
+
+
+class SlidingWindowLimiter:
+    def __init__(self, limit: int, label: str, window_seconds: float = 60.0) -> None:
+        if limit <= 0:
+            raise ValueError(f"{label} limit must be positive")
+        self.limit = limit
+        self.label = label
+        self.window_seconds = window_seconds
+        self.events: deque[float] = deque()
+
+    def acquire(self, count: int) -> None:
+        if count <= 0:
+            return
+        if count > self.limit:
+            raise ValueError(f"{self.label} count {count} exceeds per-minute limit {self.limit}")
+
+        while True:
+            now = time.monotonic()
+            self._prune(now)
+            available = self.limit - len(self.events)
+            if available >= count:
+                self.events.extend(now for _ in range(count))
+                return
+
+            wait_seconds = max(0.0, self.window_seconds - (now - self.events[0]) + 0.05)
+            print(
+                f"Rate limit: waiting {wait_seconds:.1f}s for {self.label} budget "
+                f"({len(self.events)}/{self.limit} used).",
+                file=sys.stderr,
+            )
+            time.sleep(wait_seconds)
+
+    def _prune(self, now: float) -> None:
+        while self.events and now - self.events[0] >= self.window_seconds:
+            self.events.popleft()
+
+
 def apply_limit(books: tuple[str, ...], limit: int | None) -> tuple[str, ...]:
     if limit is None:
         return books
     return books[: max(0, limit)]
+
+
+def rate_limit_summary(config: dict[str, Any]) -> str:
+    rate_limit = config.get("rate_limit")
+    if not isinstance(rate_limit, dict) or not rate_limit.get("enabled"):
+        return "Rate limit: disabled"
+    return (
+        "Rate limit: "
+        f"{rate_limit['search_requests_per_minute']} Search requests/min, "
+        f"{rate_limit['fetch_urls_per_minute']} Fetch URLs/min"
+    )
 
 
 def ranked_valid_candidates(candidates: list[BookCandidate]) -> list[BookCandidate]:

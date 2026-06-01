@@ -209,6 +209,10 @@ class TinyFishClient:
 def find_book_deals(
     book: str,
     *,
+    author: str | None = None,
+    year: str | None = None,
+    isbn: str | None = None,
+    edition: str | None = None,
     max_results: int = 8,
     search_groups: int = 3,
     fetch_pages: bool = True,
@@ -218,6 +222,10 @@ def find_book_deals(
 ) -> list[BookCandidate]:
     return find_book_deals_with_stats(
         book,
+        author=author,
+        year=year,
+        isbn=isbn,
+        edition=edition,
         max_results=max_results,
         search_groups=search_groups,
         fetch_pages=fetch_pages,
@@ -230,6 +238,10 @@ def find_book_deals(
 def find_book_deals_with_stats(
     book: str,
     *,
+    author: str | None = None,
+    year: str | None = None,
+    isbn: str | None = None,
+    edition: str | None = None,
     max_results: int = 8,
     search_groups: int = 3,
     fetch_pages: bool = True,
@@ -245,7 +257,14 @@ def find_book_deals_with_stats(
     results: list[SearchResult] = []
 
     search_started = time.perf_counter()
-    for query in build_search_queries(book, domains)[:search_groups]:
+    for query in build_search_queries(
+        book,
+        domains,
+        author=author,
+        year=year,
+        isbn=isbn,
+        edition=edition,
+    )[:search_groups]:
         _debug(debug, f"search: querying retailer group {stats.search_groups_queried + 1}")
         results.extend(client.search(query, location=location, language=language))
         stats.search_groups_queried += 1
@@ -301,12 +320,36 @@ def _debug(enabled: bool, message: str) -> None:
         print(f"[bookdeal debug] {message}", file=sys.stderr)
 
 
-def build_search_query(book: str, domains: Iterable[str] | None = None) -> str:
-    return build_search_queries(book, domains)[0]
+def build_search_query(
+    book: str,
+    domains: Iterable[str] | None = None,
+    *,
+    author: str | None = None,
+    year: str | None = None,
+    isbn: str | None = None,
+    edition: str | None = None,
+) -> str:
+    return build_search_queries(
+        book,
+        domains,
+        author=author,
+        year=year,
+        isbn=isbn,
+        edition=edition,
+    )[0]
 
 
-def build_search_queries(book: str, domains: Iterable[str] | None = None) -> list[str]:
+def build_search_queries(
+    book: str,
+    domains: Iterable[str] | None = None,
+    *,
+    author: str | None = None,
+    year: str | None = None,
+    isbn: str | None = None,
+    edition: str | None = None,
+) -> list[str]:
     clean = " ".join(book.split())
+    metadata_terms = _search_metadata_terms(author=author, year=year, isbn=isbn, edition=edition)
     blocked_terms = " ".join(
         f"-site:{domain}" for domain in (*SOCIAL_DOMAINS, *NON_BOOK_RETAIL_HOSTS)
     )
@@ -315,9 +358,30 @@ def build_search_queries(book: str, domains: Iterable[str] | None = None) -> lis
     for group in _chunks(scoped_domains, SEARCH_DOMAIN_GROUP_SIZE):
         domain_terms = " OR ".join(f"site:{domain}" for domain in group)
         queries.append(
-            f'"{clean}" (paperback OR hardcover OR ebook OR Kindle OR used OR new) ({domain_terms}) {blocked_terms}'
+            f'"{clean}" {metadata_terms} '
+            f"(paperback OR hardcover OR ebook OR Kindle OR used OR new) "
+            f"({domain_terms}) {blocked_terms}".strip()
         )
     return queries
+
+
+def _search_metadata_terms(
+    *,
+    author: str | None,
+    year: str | None,
+    isbn: str | None,
+    edition: str | None,
+) -> str:
+    terms: list[str] = []
+    if author:
+        terms.append(f'"{" ".join(author.split())}"')
+    if year:
+        terms.append(" ".join(year.split()))
+    if isbn:
+        terms.append(" ".join(isbn.split()))
+    if edition:
+        terms.append(" ".join(edition.split()))
+    return " ".join(terms)
 
 
 def domains_for_location(location: str) -> tuple[str, ...]:

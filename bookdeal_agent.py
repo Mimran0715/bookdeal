@@ -23,6 +23,10 @@ class BookDealAgentError(RuntimeError):
 def run_bookdeal_agent(
     book: str,
     *,
+    author: str | None = None,
+    year: str | None = None,
+    isbn: str | None = None,
+    edition: str | None = None,
     location: str = "US",
     language: str = "en",
     max_results: int = 8,
@@ -86,7 +90,14 @@ def run_bookdeal_agent(
         """Search only known book-retailer domains and return fetchable retailer URLs."""
         domains = domains_for_location(search_location)
         results = []
-        queries = build_search_queries(query_book, domains)[: max(1, min(groups_to_try, 5))]
+        queries = build_search_queries(
+            query_book,
+            domains,
+            author=author,
+            year=year,
+            isbn=isbn,
+            edition=edition,
+        )[: max(1, min(groups_to_try, 5))]
         for query in queries:
             results.extend(client.search(query, location=search_location, language=language))
             if len(allowed_search_results(results, domains)) >= max_urls:
@@ -127,8 +138,10 @@ def run_bookdeal_agent(
         }
 
     format_prompt = "" if format_filter == "any" else f" Only consider {format_filter} deals."
+    detail_prompt = _detail_prompt(author=author, year=year, isbn=isbn, edition=edition)
     prompt = (
         f"Find the cheapest good book or ebook deal for: {book!r}. "
+        f"{detail_prompt}"
         f"Preferred location: {location}. Inspect up to {max_results} retailer URLs. "
         f"If snippets have candidates, include them with fetched candidates before ranking.{format_prompt}"
     )
@@ -194,3 +207,24 @@ def _optional_float(value: Any) -> float | None:
     if value in (None, ""):
         return None
     return float(value)
+
+
+def _detail_prompt(
+    *,
+    author: str | None,
+    year: str | None,
+    isbn: str | None,
+    edition: str | None,
+) -> str:
+    details = []
+    if author:
+        details.append(f"author {author!r}")
+    if year:
+        details.append(f"year/date {year!r}")
+    if isbn:
+        details.append(f"ISBN {isbn!r}")
+    if edition:
+        details.append(f"edition/detail {edition!r}")
+    if not details:
+        return ""
+    return f"Use these identifying details: {', '.join(details)}. "

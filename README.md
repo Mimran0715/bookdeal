@@ -35,6 +35,8 @@ BOOKDEAL_MODEL="google-gla:gemini-2.5-flash"
 
 ```bash
 ./bookdeal "Atomic Habits"
+./bookdeal "The Hobbit" --author "J.R.R. Tolkien" --year 1937
+./bookdeal "The Hobbit" --isbn 9780547928227
 ./bookdeal "Deep Work" --max-results 5
 ./bookdeal "Atomic Habits" --location GB
 ./bookdeal "Atomic Habits" --ebook-only
@@ -49,7 +51,7 @@ BOOKDEAL_MODEL="google-gla:gemini-2.5-flash"
 
 To run it as `bookdeal "Atomic Habits"` from anywhere, add this folder to your `PATH` or symlink the `bookdeal` executable into a folder already on your `PATH`.
 
-By default, `bookdeal` searches known book retailers only, includes print books and ebooks, filters social sites before fetch, and prints the best link plus ranked backup links. Use `--max-results 10` or `-10` to inspect and show up to 10 ranked deals. Use `--format print`, `--format physical`, `--format ebook`, `--print-only`, `--physical-only`, or `--ebook-only` when you only want one format. Use `--details` to show evidence, scan counts, and ranking signals. Use `--stats` to show measured runtime and pipeline counts, or `--debug` to log each major pipeline step to stderr. Use `--no-fetch` for a faster snippet-only pass.
+By default, `bookdeal` searches known book retailers only, includes print books and ebooks, filters social sites before fetch, and prints the best link plus ranked backup links. The positional argument is the title; use `--author`, `--year`, `--isbn`, or `--edition` when you want to target a specific book version without treating those details as part of the exact title phrase. Use `--max-results 10` or `-10` to inspect and show up to 10 ranked deals. Use `--format print`, `--format physical`, `--format ebook`, `--print-only`, `--physical-only`, or `--ebook-only` when you only want one format. Use `--details` to show evidence, scan counts, and ranking signals. Use `--stats` to show measured runtime and pipeline counts, or `--debug` to log each major pipeline step to stderr. Use `--no-fetch` for a faster snippet-only pass.
 
 `--json` includes the same stats in structured form so a run can be reproduced or logged:
 
@@ -64,31 +66,42 @@ For a quick live benchmark across a small predefined book set:
 ```bash
 ./bookdeal --benchmark
 ./bookdeal --benchmark --benchmark-limit 10
+./bookdeal --benchmark --benchmark-limit 100
 ./bookdeal --benchmark --json
 ```
 
-When `books_100.txt` is present, `--benchmark` uses that list instead of the built-in fallback titles. The benchmark reports the number of books tested, average runtime, average candidates found, and success rate.
+When `test/books_100.txt` is present, `--benchmark` uses that list instead of the built-in fallback titles. The benchmark reports the number of books tested, average runtime, average candidates found, and success rate. Benchmark runs are paced for the TinyFish free tier by default: 30 Search requests/minute and 150 Fetch URLs/minute. With the default `--search-groups 3` and `--max-results 8`, a 100-book benchmark should expect periodic rate-limit waits and take at least about 10 minutes before network/API latency.
 
 ## Performance Testing
 
 Use `performance_test.py` when you want a clean report for the Build Log or a quick performance regression check:
 
 ```bash
-python3 performance_test.py
-python3 performance_test.py "Atomic Habits" "Deep Work" --max-results 8
-python3 performance_test.py --limit 10
-python3 performance_test.py --json
-python3 performance_test.py --max-average-runtime 5 --min-success-rate 0.75
+python3 test/performance_test.py
+python3 test/performance_test.py "Atomic Habits" "Deep Work" --max-results 8
+python3 test/performance_test.py --limit 10
+python3 test/performance_test.py --limit 100
+python3 test/performance_test.py --json
+python3 test/performance_test.py --max-average-runtime 5 --min-success-rate 0.75
 ```
 
-By default, the performance test reads `books_100.txt` when it exists. The report prints a summary plus a per-book table with the number of books tested, average time to return results, marketplaces queried, search results, fetched pages, candidates extracted, filtered listings with top reasons, valid ranked listings, and the best deal found. When a common retailer listing such as Amazon, Barnes & Noble, Target, Walmart, Bookshop, Books-A-Million, or Powell's appears in the same valid result set, the report also shows how much cheaper BookDeal's recommended listing was. The JSON mode emits the same data as structured output for reproducible logs.
+By default, the performance test reads `test/books_100.txt` when it exists. The report prints a summary plus a per-book table with the number of books tested, average time to return results, marketplaces queried, search results, fetched pages, candidates extracted, filtered listings with top reasons, valid ranked listings, and the best deal found. When a common retailer listing such as Amazon, Barnes & Noble, Target, Walmart, Bookshop, Books-A-Million, or Powell's appears in the same valid result set, the report also shows how much cheaper BookDeal's recommended listing was. The JSON mode emits the same data as structured output for reproducible logs.
+
+The performance scripts also pace TinyFish usage for the free tier by default:
+
+```bash
+python3 test/performance_test.py --limit 100
+python3 test/performance_test.py --limit 100 --search-requests-per-minute 30 --fetch-urls-per-minute 150
+```
+
+Use `--no-rate-limit` only if you intentionally want to run without that pacing and are comfortable receiving 429 responses.
 
 The default performance test measures the deterministic BookDeal pipeline, not the Pydantic AI agent. Agent mode has a separate benchmark because it includes model planning time and returns agent decisions instead of raw pipeline counters:
 
 ```bash
-python3 performance_test.py --agent --limit 3
-python3 agent_performance_test.py --limit 3
-python3 agent_performance_test.py --limit 3 --json
+python3 test/performance_test.py --agent --limit 3
+python3 test/agent_performance_test.py --limit 3
+python3 test/agent_performance_test.py --limit 3 --json
 ```
 
 Agent benchmarks report success rate, average/median runtime, backups returned, and agent attempt counts. They require both TinyFish credentials and the agent model credentials, such as `GEMINI_API_KEY`.

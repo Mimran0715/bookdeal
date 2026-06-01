@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from collections import deque
 import json
 import re
 import shlex
@@ -12,7 +13,9 @@ from pathlib import Path
 from agent import PipelineStats, TinyFishError, find_book_deals_with_stats
 from rank import BookCandidate, choose_best
 
-BENCHMARK_BOOK_FILE = Path("books_100.txt")
+BENCHMARK_BOOK_FILE = Path("books_100.txt") if Path("books_100.txt").exists() else Path("test/books_100.txt")
+DEFAULT_SEARCH_REQUESTS_PER_MINUTE = 30
+DEFAULT_FETCH_URLS_PER_MINUTE = 150
 BENCHMARK_BOOKS = (
     "Atomic Habits",
     "Deep Work",
@@ -36,6 +39,10 @@ def main() -> int:
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
+    parser.add_argument("--author", help="Author name to include in the search query.")
+    parser.add_argument("--year", help="Publication year or date detail to include in the search query.")
+    parser.add_argument("--isbn", help="ISBN-10 or ISBN-13 to include in the search query.")
+    parser.add_argument("--edition", help="Edition/detail text to include in the search query.")
     parser.add_argument(
         "--format",
         choices=("any", "print", "physical", "ebook"),
@@ -62,9 +69,26 @@ def main() -> int:
     parser.add_argument(
         "--benchmark-file",
         default=str(BENCHMARK_BOOK_FILE),
-        help="Newline-delimited benchmark book list. Default: books_100.txt when present.",
+        help="Newline-delimited benchmark book list. Default: books_100.txt or test/books_100.txt.",
     )
     parser.add_argument("--benchmark-limit", type=int, help="Only benchmark the first N books.")
+    parser.add_argument(
+        "--search-requests-per-minute",
+        type=int,
+        default=DEFAULT_SEARCH_REQUESTS_PER_MINUTE,
+        help="Benchmark TinyFish Search request budget. Default: 30/minute.",
+    )
+    parser.add_argument(
+        "--fetch-urls-per-minute",
+        type=int,
+        default=DEFAULT_FETCH_URLS_PER_MINUTE,
+        help="Benchmark TinyFish Fetch URL budget. Default: 150 URLs/minute.",
+    )
+    parser.add_argument(
+        "--no-rate-limit",
+        action="store_true",
+        help="Disable benchmark free-tier pacing.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args(_normalize_argv(sys.argv[1:]))
 
@@ -85,6 +109,10 @@ def main() -> int:
     try:
         result = find_book_deals_with_stats(
             book,
+            author=args.author,
+            year=args.year,
+            isbn=args.isbn,
+            edition=args.edition,
             max_results=result_limit,
             search_groups=max(1, min(args.search_groups, 5)),
             fetch_pages=not args.no_fetch,
@@ -109,7 +137,7 @@ def main() -> int:
         total_seconds=_elapsed(total_started),
     )
     if args.json:
-        print(json.dumps(_json_output(book, best, backups, filtered_candidates, format_filter, result.stats), indent=2))
+        print(json.dumps(_json_output(book, best, backups, filtered_candidates, format_filter, result.stats, args), indent=2))
         return 0 if best else 2
 
     print(_format_output(book, best, backups, filtered_candidates, format_filter, details=args.details))
@@ -154,6 +182,10 @@ def _run_agent_mode(
             search_groups=max(1, min(args.search_groups, 5)),
             location=args.location,
             language=args.language,
+            author=args.author,
+            year=args.year,
+            isbn=args.isbn,
+            edition=args.edition,
             format_filter=format_filter,
             result_limit=result_limit,
             model=args.model,
@@ -181,8 +213,14 @@ def _clean_book_title(parts: list[str]) -> str:
         "--language",
         "--model",
         "--format",
+        "--author",
+        "--year",
+        "--isbn",
+        "--edition",
         "--benchmark-file",
         "--benchmark-limit",
+        "--search-requests-per-minute",
+        "--fetch-urls-per-minute",
     }
     flag_options = {
         "--agent",
@@ -204,6 +242,7 @@ def _clean_book_title(parts: list[str]) -> str:
         "--stats",
         "--debug",
         "--benchmark",
+        "--no-rate-limit",
     }
 
     for token in tokens:
@@ -244,12 +283,25 @@ def _run_benchmark(args: argparse.Namespace) -> int:
     result_limit = max(1, min(args.max_results, 10))
     summaries: list[dict[str, object]] = []
     books, book_source = _benchmark_books(args.benchmark_file, args.benchmark_limit)
+    rate_limiter = None if args.no_rate_limit else _TinyFishRateLimiter(
+        args.search_requests_per_minute,
+        args.fetch_urls_per_minute,
+    )
 
     for book in books:
+        if rate_limiter is not None:
+            rate_limiter.wait_for_book(
+                search_requests=max(1, min(args.search_groups, 5)),
+                fetch_urls=0 if args.no_fetch else result_limit,
+            )
         started = time.perf_counter()
         try:
             result = find_book_deals_with_stats(
                 book,
+                author=args.author,
+                year=args.year,
+                isbn=args.isbn,
+                edition=args.edition,
                 max_results=result_limit,
                 search_groups=max(1, min(args.search_groups, 5)),
                 fetch_pages=not args.no_fetch,
@@ -298,6 +350,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
         "success_rate": round(len(successes) / len(summaries), 3) if summaries else 0,
         "average_runtime_seconds": round(average_runtime, 4),
         "average_candidates_found": round(average_candidates, 2),
+        "rate_limit": rate_limiter.config() if rate_limiter is not None else {"enabled": False},
         "runs": summaries,
     }
 
@@ -359,6 +412,56 @@ def _limit_books(books: tuple[str, ...], limit: int | None) -> tuple[str, ...]:
     return books[: max(0, limit)]
 
 
+class _TinyFishRateLimiter:
+    def __init__(self, search_requests_per_minute: int, fetch_urls_per_minute: int) -> None:
+        self.search_limiter = _SlidingWindowLimiter(search_requests_per_minute, "Search requests")
+        self.fetch_limiter = _SlidingWindowLimiter(fetch_urls_per_minute, "Fetch URLs")
+
+    def wait_for_book(self, *, search_requests: int, fetch_urls: int) -> None:
+        self.search_limiter.acquire(search_requests)
+        self.fetch_limiter.acquire(fetch_urls)
+
+    def config(self) -> dict[str, object]:
+        return {
+            "enabled": True,
+            "search_requests_per_minute": self.search_limiter.limit,
+            "fetch_urls_per_minute": self.fetch_limiter.limit,
+        }
+
+
+class _SlidingWindowLimiter:
+    def __init__(self, limit: int, label: str, window_seconds: float = 60.0) -> None:
+        if limit <= 0:
+            raise ValueError(f"{label} limit must be positive")
+        self.limit = limit
+        self.label = label
+        self.window_seconds = window_seconds
+        self.events: deque[float] = deque()
+
+    def acquire(self, count: int) -> None:
+        if count <= 0:
+            return
+        if count > self.limit:
+            raise ValueError(f"{self.label} count {count} exceeds per-minute limit {self.limit}")
+        while True:
+            now = time.monotonic()
+            self._prune(now)
+            if self.limit - len(self.events) >= count:
+                self.events.extend(now for _ in range(count))
+                return
+            wait_seconds = max(0.0, self.window_seconds - (now - self.events[0]) + 0.05)
+            print(
+                f"Rate limit: waiting {wait_seconds:.1f}s for {self.label} budget "
+                f"({len(self.events)}/{self.limit} used).",
+                file=sys.stderr,
+            )
+            time.sleep(wait_seconds)
+
+    def _prune(self, now: float) -> None:
+        while self.events and now - self.events[0] >= self.window_seconds:
+            self.events.popleft()
+
+
 def _stats_dict(stats: PipelineStats) -> dict[str, object]:
     return {
         "timings": {key: round(value, 4) for key, value in stats.timings.items()},
@@ -409,6 +512,13 @@ def _average(values: list[float]) -> float:
 
 
 def _format_benchmark(report: dict[str, object]) -> str:
+    rate_limit = report.get("rate_limit")
+    rate_limit_line = "- Rate limit: disabled"
+    if isinstance(rate_limit, dict) and rate_limit.get("enabled"):
+        rate_limit_line = (
+            f"- Rate limit: {rate_limit['search_requests_per_minute']} Search requests/min, "
+            f"{rate_limit['fetch_urls_per_minute']} Fetch URLs/min"
+        )
     lines = [
         "Benchmark:",
         f"- Book source: {report['book_source']}",
@@ -416,6 +526,7 @@ def _format_benchmark(report: dict[str, object]) -> str:
         f"- Success rate: {report['success_rate']}",
         f"- Average runtime: {report['average_runtime_seconds']}s",
         f"- Average candidates found: {report['average_candidates_found']}",
+        rate_limit_line,
         "",
         "Runs:",
     ]
@@ -436,9 +547,11 @@ def _json_output(
     candidates: list[BookCandidate],
     format_filter: str = "any",
     stats: PipelineStats | None = None,
+    args: argparse.Namespace | None = None,
 ) -> dict[str, object]:
     output: dict[str, object] = {
         "book": book,
+        "search_details": _search_details_dict(args),
         "format_filter": format_filter,
         "best": _candidate_dict(best) if best else None,
         "backups": [_candidate_dict(candidate) for candidate in backups],
@@ -448,6 +561,17 @@ def _json_output(
     if stats is not None:
         output["stats"] = _stats_dict(stats)
     return output
+
+
+def _search_details_dict(args: argparse.Namespace | None) -> dict[str, object]:
+    if args is None:
+        return {}
+    return {
+        "author": args.author,
+        "year": args.year,
+        "isbn": args.isbn,
+        "edition": args.edition,
+    }
 
 
 def _candidate_dict(candidate: BookCandidate) -> dict[str, object]:
