@@ -1,0 +1,101 @@
+title	author	year	isbn	edition
+Atomic Habits	James Clear	2018		
+The 7 Habits of Highly Effective People	Stephen R. Covey	1989		
+Deep Work	Cal Newport	2016		
+The Psychology of Money	Morgan Housel	2020		
+Rich Dad Poor Dad	Robert T. Kiyosaki	1997		
+Think and Grow Rich	Napoleon Hill	1937		
+The Power of Habit	Charles Duhigg	2012		
+How to Win Friends and Influence People	Dale Carnegie	1936		
+Sapiens	Yuval Noah Harari	2011		
+Homo Deus	Yuval Noah Harari	2015		
+21 Lessons for the 21st Century	Yuval Noah Harari	2018		
+Educated	Tara Westover	2018		
+Outliers	Malcolm Gladwell	2008		
+Thinking, Fast and Slow	Daniel Kahneman	2011		
+Freakonomics	Steven D. Levitt and Stephen J. Dubner	2005		
+The Tipping Point	Malcolm Gladwell	2000		
+The Body Keeps the Score	Bessel van der Kolk	2014		
+A Brief History of Time	Stephen Hawking	1988		
+The Hobbit	J.R.R. Tolkien	1937		
+The Fellowship of the Ring	J.R.R. Tolkien	1954		
+The Two Towers	J.R.R. Tolkien	1954		
+The Return of the King	J.R.R. Tolkien	1955		
+The Silmarillion	J.R.R. Tolkien	1977		
+Harry Potter and the Sorcerer's Stone	J.K. Rowling	1997		
+Harry Potter and the Chamber of Secrets	J.K. Rowling	1998		
+Harry Potter and the Prisoner of Azkaban	J.K. Rowling	1999		
+A Game of Thrones	George R.R. Martin	1996		
+The Name of the Wind	Patrick Rothfuss	2007		
+Mistborn	Brandon Sanderson	2006		
+The Way of Kings	Brandon Sanderson	2010		
+Words of Radiance	Brandon Sanderson	2014		
+The Final Empire	Brandon Sanderson	2006		
+The Eye of the World	Robert Jordan	1990		
+The Lies of Locke Lamora	Scott Lynch	2006		
+The Blade Itself	Joe Abercrombie	2006		
+Foundation	Isaac Asimov	1951		
+Foundation and Empire	Isaac Asimov	1952		
+Second Foundation	Isaac Asimov	1953		
+Neuromancer	William Gibson	1984		
+Snow Crash	Neal Stephenson	1992		
+Ender's Game	Orson Scott Card	1985		
+The Martian	Andy Weir	2011		
+Project Hail Mary	Andy Weir	2021		
+Ready Player One	Ernest Cline	2011		
+The Three-Body Problem	Cixin Liu	2008		
+Dark Forest	Cixin Liu	2008		
+Death's End	Cixin Liu	2010		
+Do Androids Dream of Electric Sheep?	Philip K. Dick	1968		
+Hyperion	Dan Simmons	1989		
+Leviathan Wakes	James S.A. Corey	2011		
+Red Rising	Pierce Brown	2014		
+Old Man's War	John Scalzi	2005		
+To Kill a Mockingbird	Harper Lee	1960		
+1984	George Orwell	1949		
+Animal Farm	George Orwell	1945		
+Pride and Prejudice	Jane Austen	1813		
+Jane Eyre	Charlotte Bronte	1847		
+Wuthering Heights	Emily Bronte	1847		
+The Great Gatsby	F. Scott Fitzgerald	1925		
+Moby Dick	Herman Melville	1851		
+Crime and Punishment	Fyodor Dostoevsky	1866		
+The Catcher in the Rye	J.D. Salinger	1951		
+The Kite Runner	Khaled Hosseini	2003		
+A Thousand Splendid Suns	Khaled Hosseini	2007		
+The Book Thief	Markus Zusak	2005		
+Where the Crawdads Sing	Delia Owens	2018		
+The Midnight Library	Matt Haig	2020		
+Remarkably Bright Creatures	Shelby Van Pelt	2022		
+All the Light We Cannot See	Anthony Doerr	2014		
+The Road	Cormac McCarthy	2006		
+Life of Pi	Yann Martel	2001		
+Clean Code	Robert C. Martin	2008		
+The Pragmatic Programmer	Andrew Hunt and David Thomas	1999		
+Design Patterns	Erich Gamma, Richard Helm, Ralph Johnson, and John Vlissides	1994		
+Refactoring	Martin Fowler	1999		
+Code Complete	Steve McConnell	1993		
+Introduction to Algorithms	Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, and Clifford Stein	1990		
+Cracking the Coding Interview	Gayle Laakmann McDowell	2008		
+Structure and Interpretation of Computer Programs	Harold Abelson, Gerald Jay Sussman, and Julie Sussman	1985		
+Computer Networks	Andrew S. Tanenbaum	1981		
+Operating System Concepts	Abraham Silberschatz, Peter Baer Galvin, and Greg Gagne	1983		
+Designing Data-Intensive Applications	Martin Kleppmann	2017		
+The Phoenix Project	Gene Kim, Kevin Behr, and George Spafford	2013		
+The DevOps Handbook	Gene Kim, Jez Humble, Patrick Debois, and John Willis	2016		
+Artificial Intelligence: A Modern Approach	Stuart Russell and Peter Norvig	1995		
+Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow	Aurelien Geron	2017		
+Deep Learning	Ian Goodfellow, Yoshua Bengio, and Aaron Courville	2016		
+Python Crash Course	Eric Matthes	2015		
+Fluent Python	Luciano Ramalho	2015		
+Effective Java	Joshua Bloch	2001		
+Clean Architecture	Robert C. Martin	2017		
+The Lean Startup	Eric Ries	2011		
+Zero to One	Peter Thiel and Blake Masters	2014		
+Good to Great	Jim Collins	2001		
+Built to Last	Jim Collins and Jerry I. Porras	1994		
+The Hard Thing About Hard Things	Ben Horowitz	2014		
+Never Split the Difference	Chris Voss and Tahl Raz	2016		
+Measure What Matters	John Doerr	2018		
+The Intelligent Investor	Benjamin Graham	1949		
+Common Stocks and Uncommon Profits	Philip Fisher	1958		

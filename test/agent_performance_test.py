@@ -60,6 +60,7 @@ def main() -> int:
         help="Agent model name. Default: BOOKDEAL_MODEL or google-gla:gemini-2.5-flash.",
     )
     parser.add_argument("--logfire", action="store_true", help="Enable Logfire tracing for agent runs.")
+    parser.add_argument("--quiet-fetch-warnings", action="store_true", help="Hide TinyFish fetch warning lines.")
     parser.add_argument("--json", action="store_true", help="Print the full agent benchmark report as JSON.")
     parser.add_argument(
         "--max-average-runtime",
@@ -84,6 +85,7 @@ def main() -> int:
         format_filter="print" if args.format == "physical" else args.format,
         model=args.model,
         enable_logfire=args.logfire,
+        warn_fetch_errors=not args.quiet_fetch_warnings,
         rate_limiter=None
         if args.no_rate_limit
         else TinyFishRateLimiter(args.search_requests_per_minute, args.fetch_urls_per_minute),

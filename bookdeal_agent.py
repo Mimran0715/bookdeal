@@ -35,6 +35,7 @@ def run_bookdeal_agent(
     result_limit: int = 4,
     model: str | None = None,
     enable_logfire: bool = False,
+    warn_fetch_errors: bool = True,
 ) -> dict[str, Any]:
     try:
         from pydantic import BaseModel, Field
@@ -64,7 +65,7 @@ def run_bookdeal_agent(
         summary: str
         attempts: list[str] = Field(default_factory=list)
 
-    client = TinyFishClient()
+    client = TinyFishClient(warn_fetch_errors=warn_fetch_errors)
     model_name = model or os.environ.get("BOOKDEAL_MODEL", "google-gla:gemini-2.5-flash")
     agent = Agent(
         model_name,

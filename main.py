@@ -37,6 +37,7 @@ def main() -> int:
     )
     parser.add_argument("--search-groups", type=int, default=3, help="Retailer search groups to try. Default: 3")
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
+    parser.add_argument("--quiet-fetch-warnings", action="store_true", help="Hide TinyFish fetch warning lines.")
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
     parser.add_argument("--author", help="Author name to include in the search query.")
@@ -119,6 +120,7 @@ def main() -> int:
             location=args.location,
             language=args.language,
             debug=args.debug,
+            warn_fetch_errors=not args.quiet_fetch_warnings,
         )
     except TinyFishError as exc:
         print(f"bookdeal: {exc}", file=sys.stderr)
@@ -190,6 +192,7 @@ def _run_agent_mode(
             result_limit=result_limit,
             model=args.model,
             enable_logfire=args.logfire,
+            warn_fetch_errors=not args.quiet_fetch_warnings,
         )
     except (BookDealAgentError, TinyFishError) as exc:
         print(f"bookdeal agent: {exc}", file=sys.stderr)
@@ -243,6 +246,7 @@ def _clean_book_title(parts: list[str]) -> str:
         "--debug",
         "--benchmark",
         "--no-rate-limit",
+        "--quiet-fetch-warnings",
     }
 
     for token in tokens:
@@ -308,6 +312,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
                 location=args.location,
                 language=args.language,
                 debug=args.debug,
+                warn_fetch_errors=not args.quiet_fetch_warnings,
             )
         except TinyFishError as exc:
             summaries.append({"book": book, "success": False, "error": str(exc)})

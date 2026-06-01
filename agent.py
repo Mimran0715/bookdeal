@@ -139,10 +139,17 @@ class DealSearchResult:
 
 
 class TinyFishClient:
-    def __init__(self, api_key: str | None = None, timeout: int = 150) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        timeout: int = 150,
+        *,
+        warn_fetch_errors: bool = True,
+    ) -> None:
         load_env()
         self.api_key = api_key or os.environ.get("TINYFISH_API_KEY")
         self.timeout = timeout
+        self.warn_fetch_errors = warn_fetch_errors
         if not self.api_key or self.api_key == "your_api_key_here":
             raise TinyFishError("Add your TinyFish API key to .env as TINYFISH_API_KEY.")
 
@@ -179,10 +186,11 @@ class TinyFishClient:
         }
         payload = self._request("POST", FETCH_ENDPOINT, body)
         errors = payload.get("errors", [])
-        for error in errors:
-            url = error.get("url", "unknown URL")
-            code = error.get("error", "fetch_error")
-            print(f"Fetch warning: {url} failed with {code}", file=sys.stderr)
+        if self.warn_fetch_errors:
+            for error in errors:
+                url = error.get("url", "unknown URL")
+                code = error.get("error", "fetch_error")
+                print(f"Fetch warning: {url} failed with {code}", file=sys.stderr)
         return payload.get("results", [])
 
     def _request(self, method: str, url: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -219,6 +227,7 @@ def find_book_deals(
     location: str = "US",
     language: str = "en",
     client: TinyFishClient | None = None,
+    warn_fetch_errors: bool = True,
 ) -> list[BookCandidate]:
     return find_book_deals_with_stats(
         book,
@@ -232,6 +241,7 @@ def find_book_deals(
         location=location,
         language=language,
         client=client,
+        warn_fetch_errors=warn_fetch_errors,
     ).candidates
 
 
@@ -249,9 +259,10 @@ def find_book_deals_with_stats(
     language: str = "en",
     client: TinyFishClient | None = None,
     debug: bool = False,
+    warn_fetch_errors: bool = True,
 ) -> DealSearchResult:
     total_started = time.perf_counter()
-    client = client or TinyFishClient()
+    client = client or TinyFishClient(warn_fetch_errors=warn_fetch_errors)
     domains = domains_for_location(location)
     stats = PipelineStats()
     results: list[SearchResult] = []

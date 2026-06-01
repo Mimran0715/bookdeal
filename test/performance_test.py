@@ -6,6 +6,8 @@ import sys
 import time
 from collections import Counter
 from collections import deque
+from dataclasses import asdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,8 @@ from main import _candidate_dict, _filter_candidates_by_format
 from rank import BookCandidate, choose_best
 
 
-DEFAULT_BOOK_FILE = Path(__file__).resolve().with_name("books_100.txt")
+DETAIL_BOOK_FILE = Path(__file__).resolve().with_name("test_100_details.txt")
+DEFAULT_BOOK_FILE = DETAIL_BOOK_FILE if DETAIL_BOOK_FILE.exists() else Path(__file__).resolve().with_name("books_100.txt")
 DEFAULT_SEARCH_REQUESTS_PER_MINUTE = 30
 DEFAULT_FETCH_URLS_PER_MINUTE = 150
 DEFAULT_BOOKS = (
@@ -38,6 +41,27 @@ TYPICAL_RETAILERS = {
 }
 
 
+@dataclass(frozen=True)
+class BookSpec:
+    title: str
+    author: str | None = None
+    year: str | None = None
+    isbn: str | None = None
+    edition: str | None = None
+
+    @property
+    def label(self) -> str:
+        return self.title
+
+    def search_kwargs(self) -> dict[str, str | None]:
+        return {
+            "author": self.author,
+            "year": self.year,
+            "isbn": self.isbn,
+            "edition": self.edition,
+        }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="performance_test.py",
@@ -51,7 +75,7 @@ def main() -> int:
     parser.add_argument(
         "--book-file",
         default=str(DEFAULT_BOOK_FILE),
-        help="Newline-delimited book list. Default: test/books_100.txt.",
+        help="Book list. Supports plain titles or tab-delimited title/author/year/isbn/edition.",
     )
     parser.add_argument("--limit", type=int, help="Only run the first N books from the selected list.")
     parser.add_argument("--max-results", type=int, default=8, help="Search results/pages to inspect. Default: 8")
@@ -76,6 +100,7 @@ def main() -> int:
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
+    parser.add_argument("--quiet-fetch-warnings", action="store_true", help="Hide TinyFish fetch warning lines.")
     parser.add_argument("--agent", action="store_true", help="Benchmark Pydantic AI agent mode instead.")
     parser.add_argument(
         "--model",
@@ -109,6 +134,7 @@ def main() -> int:
         "location": args.location,
         "language": args.language,
         "format_filter": "print" if args.format == "physical" else args.format,
+        "warn_fetch_errors": not args.quiet_fetch_warnings,
         "rate_limiter": None
         if args.no_rate_limit
         else TinyFishRateLimiter(args.search_requests_per_minute, args.fetch_urls_per_minute),
@@ -145,7 +171,7 @@ def main() -> int:
 
 
 def run_performance_check(
-    books: tuple[str, ...],
+    books: tuple[BookSpec, ...],
     *,
     book_source: str,
     max_results: int,
@@ -154,6 +180,7 @@ def run_performance_check(
     location: str,
     language: str,
     format_filter: str,
+    warn_fetch_errors: bool,
     rate_limiter: TinyFishRateLimiter | None,
 ) -> dict[str, Any]:
     runs: list[dict[str, Any]] = []
@@ -168,12 +195,14 @@ def run_performance_check(
         run_started = time.perf_counter()
         try:
             result = find_book_deals_with_stats(
-                book,
+                book.title,
+                **book.search_kwargs(),
                 max_results=max_results,
                 search_groups=search_groups,
                 fetch_pages=fetch_pages,
                 location=location,
                 language=language,
+                warn_fetch_errors=warn_fetch_errors,
             )
             candidates = result.candidates
             filtered_candidates = _filter_candidates_by_format(candidates, format_filter)
@@ -191,7 +220,8 @@ def run_performance_check(
             )
             runs.append(
                 {
-                    "book": book,
+                    "book": book.title,
+                    "search_details": asdict(book),
                     "success": best is not None,
                     "best": _candidate_dict(best) if best else None,
                     "backup_count": len(backups),
@@ -202,7 +232,8 @@ def run_performance_check(
         except TinyFishError as exc:
             runs.append(
                 {
-                    "book": book,
+                    "book": book.title,
+                    "search_details": asdict(book),
                     "success": False,
                     "error": str(exc),
                     "runtime_seconds": elapsed(run_started),
@@ -211,7 +242,7 @@ def run_performance_check(
 
     return {
         "config": {
-            "books": list(books),
+            "books": [asdict(book) for book in books],
             "book_source": book_source,
             "max_results": max_results,
             "search_groups": search_groups,
@@ -219,6 +250,7 @@ def run_performance_check(
             "location": location,
             "language": language,
             "format_filter": format_filter,
+            "warn_fetch_errors": warn_fetch_errors,
             "rate_limit": rate_limiter.config() if rate_limiter is not None else {"enabled": False},
         },
         "summary": summarize(runs, total_seconds=elapsed(started)),
@@ -227,7 +259,7 @@ def run_performance_check(
 
 
 def run_agent_performance_check(
-    books: tuple[str, ...],
+    books: tuple[BookSpec, ...],
     *,
     book_source: str,
     max_results: int,
@@ -237,6 +269,7 @@ def run_agent_performance_check(
     format_filter: str,
     model: str | None,
     enable_logfire: bool,
+    warn_fetch_errors: bool,
     rate_limiter: TinyFishRateLimiter | None,
 ) -> dict[str, Any]:
     try:
@@ -256,7 +289,8 @@ def run_agent_performance_check(
         run_started = time.perf_counter()
         try:
             decision = run_bookdeal_agent(
-                book,
+                book.title,
+                **book.search_kwargs(),
                 max_results=max_results,
                 search_groups=search_groups,
                 location=location,
@@ -265,13 +299,15 @@ def run_agent_performance_check(
                 result_limit=max_results,
                 model=model,
                 enable_logfire=enable_logfire,
+                warn_fetch_errors=warn_fetch_errors,
             )
             best = decision.get("best")
             backups = decision.get("backups") if isinstance(decision.get("backups"), list) else []
             attempts = decision.get("attempts") if isinstance(decision.get("attempts"), list) else []
             runs.append(
                 {
-                    "book": book,
+                    "book": book.title,
+                    "search_details": asdict(book),
                     "success": isinstance(best, dict),
                     "runtime_seconds": elapsed(run_started),
                     "best": best if isinstance(best, dict) else None,
@@ -283,7 +319,8 @@ def run_agent_performance_check(
         except (TinyFishError, BookDealAgentError) as exc:
             runs.append(
                 {
-                    "book": book,
+                    "book": book.title,
+                    "search_details": asdict(book),
                     "success": False,
                     "runtime_seconds": elapsed(run_started),
                     "error": str(exc),
@@ -293,7 +330,7 @@ def run_agent_performance_check(
     return {
         "config": {
             "mode": "agent",
-            "books": list(books),
+            "books": [asdict(book) for book in books],
             "book_source": book_source,
             "max_results": max_results,
             "search_groups": search_groups,
@@ -302,6 +339,7 @@ def run_agent_performance_check(
             "format_filter": format_filter,
             "model": model or "BOOKDEAL_MODEL/default",
             "logfire": enable_logfire,
+            "warn_fetch_errors": warn_fetch_errors,
             "rate_limit": rate_limiter.config() if rate_limiter is not None else {"enabled": False},
         },
         "summary": summarize_agent_runs(runs, total_seconds=elapsed(started)),
@@ -495,7 +533,7 @@ def format_agent_report(report: dict[str, Any]) -> str:
 def run_row(run: dict[str, Any]) -> tuple[str, ...]:
     if "stats" not in run:
         return (
-            str(run["book"]),
+            book_label(run),
             "error",
             f"{run.get('runtime_seconds', 0):.4f}s",
             "-",
@@ -511,7 +549,7 @@ def run_row(run: dict[str, Any]) -> tuple[str, ...]:
     stats = run["stats"]
     best = run.get("best") or {}
     return (
-        str(run["book"]),
+        book_label(run),
         "ok" if run.get("success") else "no deal",
         f"{stats['timings']['total']:.4f}s",
         str(stats["marketplaces_queried"]),
@@ -529,7 +567,7 @@ def agent_run_row(run: dict[str, Any]) -> tuple[str, ...]:
     best = run.get("best") if isinstance(run.get("best"), dict) else {}
     summary = run.get("summary") or run.get("error") or ""
     return (
-        str(run["book"]),
+        book_label(run),
         "ok" if run.get("success") else "error",
         f"{run.get('runtime_seconds', 0):.4f}s",
         str(run.get("backup_count", "-")),
@@ -539,21 +577,46 @@ def agent_run_row(run: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
-def load_books(raw_books: list[str], book_file: str, limit: int | None) -> tuple[tuple[str, ...], str]:
+def load_books(raw_books: list[str], book_file: str, limit: int | None) -> tuple[tuple[BookSpec, ...], str]:
     if raw_books:
-        books = tuple(book.strip() for book in raw_books if book.strip())
+        books = tuple(BookSpec(title=book.strip()) for book in raw_books if book.strip())
         return apply_limit(books, limit), "command line"
 
     path = Path(book_file)
     if path.exists():
-        books = tuple(
-            line.strip()
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        )
+        books = parse_book_file(path)
         return apply_limit(books, limit), str(path)
 
-    return apply_limit(DEFAULT_BOOKS, limit), "built-in fallback"
+    return apply_limit(tuple(BookSpec(title=book) for book in DEFAULT_BOOKS), limit), "built-in fallback"
+
+
+def parse_book_file(path: Path) -> tuple[BookSpec, ...]:
+    books: list[BookSpec] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        lowered = line.lower()
+        if lowered.startswith("title\t") or lowered.startswith("title|"):
+            continue
+        books.append(parse_book_line(line))
+    return tuple(books)
+
+
+def parse_book_line(line: str) -> BookSpec:
+    delimiter = "\t" if "\t" in line else "|" if "|" in line else None
+    if delimiter is None:
+        return BookSpec(title=line.strip())
+
+    parts = [part.strip() or None for part in line.split(delimiter)]
+    padded = [*parts, None, None, None, None, None]
+    return BookSpec(
+        title=str(padded[0] or "").strip(),
+        author=padded[1],
+        year=padded[2],
+        isbn=padded[3],
+        edition=padded[4],
+    )
 
 
 class TinyFishRateLimiter:
@@ -609,10 +672,17 @@ class SlidingWindowLimiter:
             self.events.popleft()
 
 
-def apply_limit(books: tuple[str, ...], limit: int | None) -> tuple[str, ...]:
+def apply_limit(books: tuple[BookSpec, ...], limit: int | None) -> tuple[BookSpec, ...]:
     if limit is None:
         return books
     return books[: max(0, limit)]
+
+
+def book_label(run: dict[str, Any]) -> str:
+    details = run.get("search_details")
+    if isinstance(details, dict) and details.get("title"):
+        return str(details["title"])
+    return str(run["book"])
 
 
 def rate_limit_summary(config: dict[str, Any]) -> str:

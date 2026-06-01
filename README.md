@@ -2,7 +2,7 @@
 
 Find the cheapest good option for a book or ebook using TinyFish Search and Fetch.
 
-The CLI searches live marketplace pages, fetches the most promising results, extracts prices/conditions/shipping signals, filters suspicious listings like audiobooks and summaries, then ranks for the cheapest reasonable total.
+BookDeal searches live marketplace pages, fetches promising listings, extracts prices/conditions/shipping signals, filters suspicious results like audiobooks and summaries, then ranks the cheapest reasonable totals.
 
 ## Setup
 
@@ -24,7 +24,7 @@ Or install the project in editable mode:
 pip install -e .
 ```
 
-Agent mode also needs a Gemini key:
+Agent mode also needs model credentials:
 
 ```bash
 GEMINI_API_KEY="your_gemini_key_here"
@@ -37,147 +37,57 @@ BOOKDEAL_MODEL="google-gla:gemini-2.5-flash"
 ./bookdeal "Atomic Habits"
 ./bookdeal "The Hobbit" --author "J.R.R. Tolkien" --year 1937
 ./bookdeal "The Hobbit" --isbn 9780547928227
-./bookdeal "Deep Work" --max-results 5
-./bookdeal "Atomic Habits" --location GB
-./bookdeal "Atomic Habits" --ebook-only
-./bookdeal "Atomic Habits" --print-only
-./bookdeal "Atomic Habits" --physical-only
-./bookdeal "Remarkably Bright Creatures" --details
 ./bookdeal "Atomic Habits" --stats
 ./bookdeal "All the Light We Cannot See" --json
-./bookdeal --benchmark
-./bookdeal "Atomic Habits" --agent
+./bookdeal "Atomic Habits" --quiet-fetch-warnings
 ```
 
-To run it as `bookdeal "Atomic Habits"` from anywhere, add this folder to your `PATH` or symlink the `bookdeal` executable into a folder already on your `PATH`.
+The positional argument is the title. Use `--author`, `--year`, `--isbn`, or `--edition` when you want a more specific search without treating those details as part of the exact title phrase.
 
-By default, `bookdeal` searches known book retailers only, includes print books and ebooks, filters social sites before fetch, and prints the best link plus ranked backup links. The positional argument is the title; use `--author`, `--year`, `--isbn`, or `--edition` when you want to target a specific book version without treating those details as part of the exact title phrase. Use `--max-results 10` or `-10` to inspect and show up to 10 ranked deals. Use `--format print`, `--format physical`, `--format ebook`, `--print-only`, `--physical-only`, or `--ebook-only` when you only want one format. Use `--details` to show evidence, scan counts, and ranking signals. Use `--stats` to show measured runtime and pipeline counts, or `--debug` to log each major pipeline step to stderr. Use `--no-fetch` for a faster snippet-only pass.
-
-`--json` includes the same stats in structured form so a run can be reproduced or logged:
-
-```bash
-./bookdeal "Atomic Habits" --json
-```
-
-The `stats` object reports timings for search, fetch, extraction/filtering, ranking, and total execution time, plus marketplaces queried, search results returned, pages fetched, candidates extracted, filtered listing counts with reasons, and final valid listings ranked.
-
-For a quick live benchmark across a small predefined book set:
-
-```bash
-./bookdeal --benchmark
-./bookdeal --benchmark --benchmark-limit 10
-./bookdeal --benchmark --benchmark-limit 100
-./bookdeal --benchmark --json
-```
-
-When `test/books_100.txt` is present, `--benchmark` uses that list instead of the built-in fallback titles. The benchmark reports the number of books tested, average runtime, average candidates found, and success rate. Benchmark runs are paced for the TinyFish free tier by default: 30 Search requests/minute and 150 Fetch URLs/minute. With the default `--search-groups 3` and `--max-results 8`, a 100-book benchmark should expect periodic rate-limit waits and take at least about 10 minutes before network/API latency.
+For the full option reference, including format filters, benchmarks, rate limits, and agent mode, see [OPTIONS.md](OPTIONS.md).
 
 ## Performance Testing
 
-Use `performance_test.py` when you want a clean report for the Build Log or a quick performance regression check:
-
-```bash
-python3 test/performance_test.py
-python3 test/performance_test.py "Atomic Habits" "Deep Work" --max-results 8
-python3 test/performance_test.py --limit 10
-python3 test/performance_test.py --limit 100
-python3 test/performance_test.py --json
-python3 test/performance_test.py --max-average-runtime 5 --min-success-rate 0.75
-```
-
-By default, the performance test reads `test/books_100.txt` when it exists. The report prints a summary plus a per-book table with the number of books tested, average time to return results, marketplaces queried, search results, fetched pages, candidates extracted, filtered listings with top reasons, valid ranked listings, and the best deal found. When a common retailer listing such as Amazon, Barnes & Noble, Target, Walmart, Bookshop, Books-A-Million, or Powell's appears in the same valid result set, the report also shows how much cheaper BookDeal's recommended listing was. The JSON mode emits the same data as structured output for reproducible logs.
-
-The performance scripts also pace TinyFish usage for the free tier by default:
+Run the deterministic benchmark:
 
 ```bash
 python3 test/performance_test.py --limit 100
-python3 test/performance_test.py --limit 100 --search-requests-per-minute 30 --fetch-urls-per-minute 150
 ```
 
-Use `--no-rate-limit` only if you intentionally want to run without that pacing and are comfortable receiving 429 responses.
-
-The default performance test measures the deterministic BookDeal pipeline, not the Pydantic AI agent. Agent mode has a separate benchmark because it includes model planning time and returns agent decisions instead of raw pipeline counters:
+Run the agent benchmark:
 
 ```bash
-python3 test/performance_test.py --agent --limit 3
 python3 test/agent_performance_test.py --limit 3
-python3 test/agent_performance_test.py --limit 3 --json
 ```
 
-Agent benchmarks report success rate, average/median runtime, backups returned, and agent attempt counts. They require both TinyFish credentials and the agent model credentials, such as `GEMINI_API_KEY`.
+The performance runner uses `test/test_100_details.txt` by default when present. That file includes 100 rows of title, author, year, ISBN, and edition fields. Benchmark runs are paced for the TinyFish free tier by default: 30 Search requests/minute and 150 Fetch URLs/minute.
 
-US searches target sites like Barnes & Noble, Amazon, AbeBooks, ThriftBooks, Better World Books, Bookshop, Books-A-Million, Half Price Books, Target, Walmart, Powell's, Biblio, Alibris, and eBay. `--location GB` switches to sites like Waterstones, Blackwell's, Amazon UK, AbeBooks UK, Wob, World of Books, Bookshop, and eBay UK.
+## Current Metrics
 
-Current US retailer list:
+From a 10-book deterministic benchmark:
 
-- barnesandnoble.com
-- amazon.com
-- abebooks.com
-- thriftbooks.com
-- betterworldbooks.com
-- bookshop.org
-- booksamillion.com
-- halfpricebooks.com
-- target.com
-- walmart.com
-- powells.com
-- biblio.com
-- alibris.com
-- ebay.com
+- Success rate: 100% (10/10)
+- Average runtime: 6.29 seconds/query
+- Median runtime: 5.23 seconds/query
+- Average candidates extracted: 26.0 listings/query
+- Average misleading listings filtered: 1.3/query
+- Average valid listings ranked: 2.4/query
+- Savings examples found: 6/10
+- Average observed savings: $6.99
 
-Current GB retailer list:
-
-- waterstones.com
-- blackwells.co.uk
-- amazon.co.uk
-- abebooks.co.uk
-- wob.com
-- worldofbooks.com
-- bookshop.org
-- ebay.co.uk
+BookDeal supports 10+ marketplaces. Individual runs may query fewer marketplaces because the pipeline stops early once it has enough valid results.
 
 ## Agent Mode
 
-Use `--agent` to run a Pydantic AI agent over the same TinyFish tools:
-
 ```bash
 ./bookdeal "Atomic Habits" --agent
-./bookdeal "Atomic Habits" --agent --details
-./bookdeal "Atomic Habits" --agent --model google-gla:gemini-2.5-flash
+./bookdeal "The Hobbit" --agent --author "J.R.R. Tolkien"
 ```
 
 The agent can decide to search retailer groups, fetch promising pages, rank extracted candidates, and retry with a broader strategy when the first pass is weak. The deterministic CLI path remains available without `--agent`.
 
-If you use Logfire, authenticate/configure it with the Logfire CLI, then enable tracing:
-
-```bash
-logfire auth
-logfire projects use
-./bookdeal "Atomic Habits" --agent --logfire
-```
-
-You can also enable tracing by default in `.env`:
-
-```bash
-BOOKDEAL_LOGFIRE="1"
-```
-
-To send traces without using `logfire auth`, add a Logfire write token:
-
-```bash
-LOGFIRE_TOKEN="your_logfire_write_token_here"
-```
-
-For basic tracing you want `LOGFIRE_TOKEN`. `LOGFIRE_API_KEY` is different and is mainly for Logfire API features such as managed variables.
-
 ## Ranking
 
-`bookdeal` favors the cheapest valid total, not the raw lowest sticker price. The score includes:
-
-- item price
-- shipping when found
-- condition penalty
-- merchant trust penalty
-- suspicious listing penalty
+`bookdeal` favors the cheapest valid total, not the raw lowest sticker price. The score includes item price, shipping when found, condition, merchant trust, and suspicious listing penalties.
 
 Listings with terms like `audiobook`, `summary`, `study guide`, `pdf`, or `rental` are filtered out before choosing the best deal. Ebook and Kindle listings are allowed and do not receive a missing-shipping penalty.
