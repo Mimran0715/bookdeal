@@ -91,3 +91,7 @@ The agent can decide to search retailer groups, fetch promising pages, rank extr
 `bookdeal` favors the cheapest valid total, not the raw lowest sticker price. The score includes item price, shipping when found, condition, merchant trust, and suspicious listing penalties.
 
 Listings with terms like `audiobook`, `summary`, `study guide`, `pdf`, or `rental` are filtered out before choosing the best deal. Ebook and Kindle listings are allowed and do not receive a missing-shipping penalty.
+
+## License
+
+BookDeal is open source under the [MIT License](LICENSE).
