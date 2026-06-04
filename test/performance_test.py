@@ -100,7 +100,8 @@ def main() -> int:
     parser.add_argument("--location", default="US", help="TinyFish search/fetch region. Default: US")
     parser.add_argument("--language", default="en", help="TinyFish search language. Default: en")
     parser.add_argument("--no-fetch", action="store_true", help="Use search snippets only.")
-    parser.add_argument("--quiet-fetch-warnings", action="store_true", help="Hide TinyFish fetch warning lines.")
+    parser.add_argument("--warnings", action="store_true", help="Show TinyFish fetch warning lines.")
+    parser.add_argument("--quiet-fetch-warnings", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--agent", action="store_true", help="Benchmark Pydantic AI agent mode instead.")
     parser.add_argument(
         "--model",
@@ -134,7 +135,7 @@ def main() -> int:
         "location": args.location,
         "language": args.language,
         "format_filter": "print" if args.format == "physical" else args.format,
-        "warn_fetch_errors": not args.quiet_fetch_warnings,
+        "warn_fetch_errors": args.warnings,
         "rate_limiter": None
         if args.no_rate_limit
         else TinyFishRateLimiter(args.search_requests_per_minute, args.fetch_urls_per_minute),

@@ -40,7 +40,7 @@ This file collects the extra CLI, benchmark, metadata, and agent options so the 
 ./bookdeal "Atomic Habits" --details
 ./bookdeal "Atomic Habits" --stats
 ./bookdeal "Atomic Habits" --json
-./bookdeal "Atomic Habits" --quiet-fetch-warnings
+./bookdeal "Atomic Habits" --warnings
 ```
 
 - `--details`: shows ranking evidence, scan counts, and score details.
@@ -48,7 +48,7 @@ This file collects the extra CLI, benchmark, metadata, and agent options so the 
 - `--json`: prints machine-readable output, including structured stats.
 - `--debug`: logs pipeline steps to stderr.
 - `--no-fetch`: skips page fetching and uses search snippets only.
-- `--quiet-fetch-warnings`: hides TinyFish fetch warning lines for URLs that fail to fetch.
+- `--warnings`: shows TinyFish fetch warning lines for URLs that fail to fetch. Warnings are hidden by default.
 
 ## Benchmarks
 
@@ -75,7 +75,7 @@ python3 test/performance_test.py --limit 100 --search-requests-per-minute 30 --f
 - `--search-requests-per-minute`: Search request budget. Default: `30`.
 - `--fetch-urls-per-minute`: Fetch URL budget. Default: `150`.
 - `--no-rate-limit`: disables pacing. Expect possible 429 responses on full-list runs.
-- `--quiet-fetch-warnings`: useful for cleaner long benchmark output.
+- `--warnings`: includes TinyFish fetch warning lines in benchmark output.
 
 ## Agent Mode
 

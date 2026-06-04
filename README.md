@@ -4,6 +4,17 @@ Find the cheapest good option for a book or ebook using TinyFish Search and Fetc
 
 BookDeal searches live marketplace pages, fetches promising listings, extracts prices/conditions/shipping signals, filters suspicious results like audiobooks and summaries, then ranks the cheapest reasonable totals.
 
+## Workflow
+
+```mermaid
+flowchart LR
+    query["Book query<br/>title, author, ISBN"] --> search["Search<br/>TinyFish + retailer groups"]
+    search --> fetch["Fetch<br/>promising listing pages"]
+    fetch --> extract["Extract / Filter<br/>prices, condition, shipping<br/>remove summaries, rentals, audiobooks"]
+    extract --> rank["Rank<br/>total cost + trust signals"]
+    rank --> result["Best deal<br/>with backup options"]
+```
+
 ## Setup
 
 Add your TinyFish key to `.env`:
@@ -39,10 +50,12 @@ BOOKDEAL_MODEL="google-gla:gemini-2.5-flash"
 ./bookdeal "The Hobbit" --isbn 9780547928227
 ./bookdeal "Atomic Habits" --stats
 ./bookdeal "All the Light We Cannot See" --json
-./bookdeal "Atomic Habits" --quiet-fetch-warnings
+./bookdeal "Atomic Habits" --warnings
 ```
 
 The positional argument is the title. Use `--author`, `--year`, `--isbn`, or `--edition` when you want a more specific search without treating those details as part of the exact title phrase.
+
+Fetch warnings are hidden by default for cleaner CLI output. Pass `--warnings` when you want to see TinyFish fetch failures for debugging.
 
 For the full option reference, including format filters, benchmarks, rate limits, and agent mode, see [OPTIONS.md](OPTIONS.md).
 
