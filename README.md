@@ -73,20 +73,21 @@ Run the agent benchmark:
 python3 test/agent_performance_test.py --limit 3
 ```
 
-The performance runner uses `test/test_100_details.txt` by default when present. That file includes 100 rows of title, author, year, ISBN, and edition fields. Benchmark runs are paced for the TinyFish free tier by default: 30 Search requests/minute and 150 Fetch URLs/minute.
+The performance runner uses `test/test_100_details.txt` by default when present. That file includes 100 rows with title, author, year, and optional ISBN/edition fields. Benchmark runs are paced for the TinyFish free tier by default: 30 Search requests/minute and 150 Fetch URLs/minute.
 
 ## Current Metrics
 
-From a 10-book deterministic benchmark:
+From a 100-book deterministic benchmark using `test/test_100_details.txt`:
 
-- Success rate: 100% (10/10)
-- Average runtime: 6.29 seconds/query
-- Median runtime: 5.23 seconds/query
-- Average candidates extracted: 26.0 listings/query
-- Average misleading listings filtered: 1.3/query
-- Average valid listings ranked: 2.4/query
-- Savings examples found: 6/10
-- Average observed savings: $6.99
+- Success rate: 91% (91/100)
+- Average runtime: 21.25 seconds/query
+- Median runtime: 14.86 seconds/query
+- Average candidates extracted: 23.66 listings/query
+- Average misleading listings filtered: 1.4/query
+- Average valid listings ranked: 2.45/query
+- Observed cheaper alternatives found: 19/100
+- Average savings among cheaper alternatives: $8.11
+- Best observed example: `Zero to One` saved $23.71 vs Books-A-Million
 
 BookDeal supports 10+ marketplaces. Individual runs may query fewer marketplaces because the pipeline stops early once it has enough valid results.
 
