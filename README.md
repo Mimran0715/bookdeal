@@ -1,4 +1,4 @@
-# bookdeal
+<h1 align="center">Bookdeal</h1>
 
 Find the cheapest good option for a book or ebook using TinyFish Search and Fetch.
 
