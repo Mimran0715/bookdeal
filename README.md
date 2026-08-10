@@ -5,7 +5,7 @@ Find the cheapest good option for a book or ebook using TinyFish Search and Fetc
 BookDeal searches live marketplace pages, fetches promising listings, extracts prices/conditions/shipping signals, filters suspicious results like audiobooks and summaries, then ranks the cheapest reasonable totals.
 
 **New:**
-Featured on TinyFish blog: https://www.tinyfish.ai/blogbuilding-bookdeal-with-tinyfish-from-twelve-tabs-to-one-command
+Featured on TinyFish blog: https://www.tinyfish.ai/blog/building-bookdeal-with-tinyfish-from-twelve-tabs-to-one-command
 
 ## Workflow
 
