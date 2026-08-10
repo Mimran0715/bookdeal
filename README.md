@@ -1,15 +1,15 @@
 <h1 align="center">Bookdeal</h1>
 
-<div style="center">
-<img width="1039" height="678" alt="Screenshot 2026-06-03 at 4 20 51 PM" src="https://github.com/user-attachments/assets/4bc741f7-47c2-4ac7-9c64-a12c2c7f8a54" />
-</div>
-
 Find the cheapest good option for a book or ebook using TinyFish Search and Fetch.
 
 BookDeal searches live marketplace pages, fetches promising listings, extracts prices/conditions/shipping signals, filters suspicious results like audiobooks and summaries, then ranks the cheapest reasonable totals.
 
 **New:**
 Featured on TinyFish blog: https://www.tinyfish.ai/blog/building-bookdeal-with-tinyfish-from-twelve-tabs-to-one-command
+
+<div style="center">
+<img width="1039" height="678" alt="Screenshot 2026-06-03 at 4 20 51 PM" src="https://github.com/user-attachments/assets/4bc741f7-47c2-4ac7-9c64-a12c2c7f8a54" />
+</div>
 
 ## Workflow
 
