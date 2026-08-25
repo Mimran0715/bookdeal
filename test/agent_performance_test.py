@@ -15,7 +15,6 @@ from performance_test import (
     threshold_failures,
 )
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="agent_performance_test.py",
@@ -57,7 +56,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--model",
-        help="Agent model name. Default: BOOKDEAL_MODEL or google-gla:gemini-2.5-flash.",
+        help="Agent model name. Default: BOOKDEAL_MODEL or google:gemini-2.5-flash.",
     )
     parser.add_argument("--logfire", action="store_true", help="Enable Logfire tracing for agent runs.")
     parser.add_argument("--warnings", action="store_true", help="Show TinyFish fetch warning lines.")

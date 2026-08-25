@@ -5,6 +5,7 @@ from typing import Iterable
 from urllib.parse import urlparse
 
 
+# Dict of online book marketplaces with trust scores (0.7-0.95)
 TRUSTED_MERCHANTS = {
     "abebooks.com": 0.95,
     "alibris.com": 0.85,
@@ -26,8 +27,9 @@ TRUSTED_MERCHANTS = {
     "waterstones.com": 0.95,
     "wob.com": 0.9,
     "worldofbooks.com": 0.9,
-}
+} 
 
+# Dict of conditions of book listings and corresponding scores
 CONDITION_SCORES = {
     "ebook": 0.4,
     "new": 0,
@@ -37,8 +39,9 @@ CONDITION_SCORES = {
     "acceptable": 3.5,
     "used": 1.5,
     "unknown": 2.0,
-}
+} # assigning 
 
+# List of terms to be blocked during search based on initial TinyFish searches
 BLOCKED_TERMS = (
     "audiobook",
     "audio book",
@@ -52,6 +55,8 @@ BLOCKED_TERMS = (
 
 @dataclass(frozen=True)
 class BookCandidate:
+    '''Immutable class for organizing Book Candidates with price, shipping, and scores calculated 
+    via CONDITION_SCORES'''
     title: str
     merchant: str
     url: str
@@ -92,14 +97,15 @@ class BookCandidate:
 
     @property
     def score(self) -> float:
+        '''Calculates score based on trust, condition, shipping, and flag presence'''
         trust_penalty = max(0.0, 1.0 - self.trust) * 3
         condition_penalty = CONDITION_SCORES.get(self.condition, CONDITION_SCORES["unknown"])
         shipping_penalty = 0.0 if self.condition == "ebook" else 2.0 if self.shipping is None else 0.0
         flag_penalty = len(self.flags) * 2.5
         return self.total + trust_penalty + condition_penalty + shipping_penalty + flag_penalty
 
-
 def merchant_from_url(url: str) -> str:
+    '''Returns book retailer from urls'''
     host = urlparse(url).netloc.lower().removeprefix("www.")
     parts = host.split(".")
     if len(parts) >= 3 and ".".join(parts[-2:]) in {"co.uk", "com.au", "co.nz"}:
@@ -108,22 +114,22 @@ def merchant_from_url(url: str) -> str:
         return ".".join(parts[-2:])
     return host or "unknown"
 
-
-def trust_for_url(url: str) -> float:
+def trust_for_url(url: str, default_trust:float=0.55) -> float:
+    '''Returns trust score for book retailer'''
     merchant = merchant_from_url(url)
-    return TRUSTED_MERCHANTS.get(merchant, 0.55)
-
+    return TRUSTED_MERCHANTS.get(merchant, default_trust)
 
 def blocked_flags(text: str) -> tuple[str, ...]:
+    '''Returns blocked flags found in text'''
     lowered = text.lower()
     return tuple(term for term in BLOCKED_TERMS if term in lowered)
-
 
 def choose_best(
     candidates: Iterable[BookCandidate],
     *,
     limit: int = 4,
 ) -> tuple[BookCandidate | None, list[BookCandidate]]:
+    '''Returns ranked best and backup candidates'''
     valid = [candidate for candidate in candidates if not candidate.flags]
     ranked = []
     seen_urls: set[str] = set()

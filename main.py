@@ -13,6 +13,7 @@ from pathlib import Path
 from agent import PipelineStats, TinyFishError, find_book_deals_with_stats
 from rank import BookCandidate, choose_best
 
+# Testing configuration
 BENCHMARK_BOOK_FILE = Path("books_100.txt") if Path("books_100.txt").exists() else Path("test/books_100.txt")
 DEFAULT_SEARCH_REQUESTS_PER_MINUTE = 30
 DEFAULT_FETCH_URLS_PER_MINUTE = 150
@@ -22,8 +23,8 @@ BENCHMARK_BOOKS = (
     "All the Light We Cannot See",
 )
 
-
 def main() -> int:
+    """Prints results of bookdeal search based on command-line input"""
     parser = argparse.ArgumentParser(
         prog="bookdeal",
         description="Find the cheapest good book listing.",
@@ -99,6 +100,7 @@ def main() -> int:
     if not args.book:
         parser.error("the following arguments are required: book")
 
+    # formatting input
     book = _clean_book_title(args.book)
     if (args.print_only or args.physical_only) and args.ebook_only:
         parser.error("choose either a physical/print filter or --ebook-only, not both")
@@ -107,6 +109,7 @@ def main() -> int:
     if args.agent:
         return _run_agent_mode(book, args, format_filter, result_limit)
 
+    # running book search w/ pipeline stats
     total_started = time.perf_counter()
     try:
         result = find_book_deals_with_stats(
@@ -127,6 +130,7 @@ def main() -> int:
         print(f"bookdeal: {exc}", file=sys.stderr)
         return 1
 
+    # filtering candidates
     candidates = result.candidates
     filtered_candidates = _filter_candidates_by_format(candidates, format_filter)
     ranking_started = time.perf_counter()
@@ -143,14 +147,15 @@ def main() -> int:
         print(json.dumps(_json_output(book, best, backups, filtered_candidates, format_filter, result.stats, args), indent=2))
         return 0 if best else 2
 
+    # printing candidate results
     print(_format_output(book, best, backups, filtered_candidates, format_filter, details=args.details))
     if args.stats:
         print()
         print(_format_stats(result.stats))
     return 0 if best else 2
 
-
 def _normalize_argv(argv: list[str]) -> list[str]:
+    """Returns normalized command-line arguements"""
     aliases = {
         "-agent": "--agent",
         "-details": "--details",
@@ -176,6 +181,7 @@ def _run_agent_mode(
     format_filter: str = "any",
     result_limit: int = 4,
 ) -> int:
+    """Runs Pydantic agentic workflow w/ model"""
     try:
         from bookdeal_agent import BookDealAgentError, run_bookdeal_agent
 
@@ -207,6 +213,7 @@ def _run_agent_mode(
 
 
 def _clean_book_title(parts: list[str]) -> str:
+    """Remove command-line options and flags from book title parts."""
     tokens = shlex.split(" ".join(parts))
     cleaned: list[str] = []
     skip_next = False
@@ -268,6 +275,7 @@ def _clean_book_title(parts: list[str]) -> str:
 
 
 def _format_filter(args: argparse.Namespace) -> str:
+    """Returns book version (print or ebook)"""
     if args.print_only or args.physical_only:
         return "print"
     if args.ebook_only:
@@ -279,12 +287,14 @@ def _filter_candidates_by_format(
     candidates: list[BookCandidate],
     format_filter: str,
 ) -> list[BookCandidate]:
+    """Filter book candidates by format."""
     if format_filter == "any":
         return candidates
     return [candidate for candidate in candidates if candidate.format == format_filter]
 
 
 def _run_benchmark(args: argparse.Namespace) -> int:
+    """Run benchmark tests and collect performance results."""
     format_filter = _format_filter(args)
     result_limit = max(1, min(args.max_results, 10))
     summaries: list[dict[str, object]] = []
@@ -377,6 +387,7 @@ def _update_cli_stats(
     ranking_seconds: float,
     total_seconds: float,
 ) -> None:
+    """Updates pipeline statistics"""
     stats.timings["ranking"] = ranking_seconds
     stats.timings["total"] = total_seconds
     reasons: Counter[str] = Counter()
@@ -402,6 +413,7 @@ def _update_cli_stats(
 
 
 def _benchmark_books(book_file: str, limit: int | None) -> tuple[tuple[str, ...], str]:
+    """Load books for benchmark tests, using a built-in fallback if needed."""
     path = Path(book_file)
     if path.exists():
         books = tuple(
@@ -414,6 +426,7 @@ def _benchmark_books(book_file: str, limit: int | None) -> tuple[tuple[str, ...]
 
 
 def _limit_books(books: tuple[str, ...], limit: int | None) -> tuple[str, ...]:
+    """Limits book candidate results"""
     if limit is None:
         return books
     return books[: max(0, limit)]
@@ -470,6 +483,7 @@ class _SlidingWindowLimiter:
 
 
 def _stats_dict(stats: PipelineStats) -> dict[str, object]:
+    """Returns stats"""
     return {
         "timings": {key: round(value, 4) for key, value in stats.timings.items()},
         "marketplaces_queried": stats.marketplaces_queried,
@@ -487,6 +501,7 @@ def _stats_dict(stats: PipelineStats) -> dict[str, object]:
 
 
 def _format_stats(stats: PipelineStats) -> str:
+    """Returns formatted stats string"""
     data = _stats_dict(stats)
     timings = data["timings"]
     assert isinstance(timings, dict)
@@ -509,6 +524,7 @@ def _format_stats(stats: PipelineStats) -> str:
 
 
 def _format_filter_reasons(reasons: dict[str, int]) -> str:
+    """Returns reasons for filtering"""
     if not reasons:
         return "none"
     return ", ".join(f"{reason}: {count}" for reason, count in reasons.items())
@@ -516,7 +532,6 @@ def _format_filter_reasons(reasons: dict[str, int]) -> str:
 
 def _average(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
-
 
 def _format_benchmark(report: dict[str, object]) -> str:
     rate_limit = report.get("rate_limit")
@@ -556,6 +571,7 @@ def _json_output(
     stats: PipelineStats | None = None,
     args: argparse.Namespace | None = None,
 ) -> dict[str, object]:
+    """Returns JSON output of book search"""
     output: dict[str, object] = {
         "book": book,
         "search_details": _search_details_dict(args),
@@ -571,6 +587,7 @@ def _json_output(
 
 
 def _search_details_dict(args: argparse.Namespace | None) -> dict[str, object]:
+    """Returns book search details"""
     if args is None:
         return {}
     return {
@@ -582,6 +599,7 @@ def _search_details_dict(args: argparse.Namespace | None) -> dict[str, object]:
 
 
 def _candidate_dict(candidate: BookCandidate) -> dict[str, object]:
+    """Returns book candidate details"""
     return {
         "merchant": candidate.merchant,
         "url": candidate.url,
@@ -607,6 +625,7 @@ def _format_output(
     *,
     details: bool = False,
 ) -> str:
+    """Formats output"""
     if best is None:
         filtered = len([candidate for candidate in candidates if candidate.flags])
         format_note = "" if format_filter == "any" else f" matching format {format_filter!r}"
@@ -650,6 +669,7 @@ def _format_output(
 
 
 def _format_agent_output(decision: dict[str, object], *, details: bool = False) -> str:
+    """Formats agent output"""
     best = decision.get("best")
     if not isinstance(best, dict):
         return str(decision.get("summary") or "No valid deal found.")

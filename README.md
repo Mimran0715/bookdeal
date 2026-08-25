@@ -32,12 +32,6 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Or install the project in editable mode:
-
-```bash
-pip install -e .
-```
-
 Agent mode also needs model credentials:
 
 ```bash

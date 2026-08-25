@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
 
 from agent import (
     TinyFishClient,
@@ -11,9 +14,11 @@ from agent import (
     domains_for_location,
     extract_from_fetched_pages,
     extract_from_search_results,
-    load_env,
 )
 from rank import BookCandidate, choose_best
+
+# DOTENV_PATH = Path(__file__).resolve().with_name(".env")
+DOTENV_PATH = "./.env"
 
 
 class BookDealAgentError(RuntimeError):
@@ -46,7 +51,7 @@ def run_bookdeal_agent(
             "Install agent dependencies first: pip install 'pydantic-ai[logfire]'"
         ) from exc
 
-    load_env()
+    load_dotenv(dotenv_path=DOTENV_PATH)
     if enable_logfire or os.environ.get("BOOKDEAL_LOGFIRE") == "1":
         _configure_logfire()
 
@@ -66,7 +71,7 @@ def run_bookdeal_agent(
         attempts: list[str] = Field(default_factory=list)
 
     client = TinyFishClient(warn_fetch_errors=warn_fetch_errors)
-    model_name = model or os.environ.get("BOOKDEAL_MODEL", "google-gla:gemini-2.5-flash")
+    model_name = model or os.environ.get("BOOKDEAL_MODEL", "google:gemini-2.5-flash")
     agent = Agent(
         model_name,
         output_type=DealDecision,
