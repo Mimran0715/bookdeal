@@ -9,12 +9,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable
 
-from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
 from dotenv import load_dotenv
+from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
 
-load_dotenv()
+DOTENV_PATH = Path(__file__).resolve().with_name(".env")
+load_dotenv(dotenv_path=DOTENV_PATH)
 
 SEARCH_ENDPOINT = "https://api.search.tinyfish.ai"
 FETCH_ENDPOINT = "https://api.fetch.tinyfish.ai"
@@ -148,7 +150,7 @@ class TinyFishClient:
         *,
         warn_fetch_errors: bool = True,
     ) -> None:
-        load_dotenv()   # load_env()
+        load_dotenv(dotenv_path=DOTENV_PATH)
         self.api_key = api_key or os.environ.get("TINYFISH_API_KEY")
         self.timeout = timeout
         self.warn_fetch_errors = warn_fetch_errors
@@ -604,19 +606,3 @@ def _chunks(items: Iterable[str], size: int) -> Iterable[tuple[str, ...]]:
 def polite_pause(seconds: float = 12.5) -> None:
     # Handy if this grows into multiple searches. Free search allows 5 requests/minute.
     time.sleep(seconds)
-
-
-# def load_env(path: str = ".env") -> None:
-#     if not os.path.exists(path):
-#         return
-
-#     with open(path, encoding="utf-8") as env_file:
-#         for raw_line in env_file:
-#             line = raw_line.strip()
-#             if not line or line.startswith("#") or "=" not in line:
-#                 continue
-#             key, value = line.split("=", 1)
-#             key = key.strip()
-#             value = value.strip().strip('"').strip("'")
-#             if key and key not in os.environ:
-#                 os.environ[key] = value
