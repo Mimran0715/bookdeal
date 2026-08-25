@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from rank import BookCandidate, blocked_flags, merchant_from_url, trust_for_url
+from dotenv import load_dotenv
 
+load_dotenv()
 
 SEARCH_ENDPOINT = "https://api.search.tinyfish.ai"
 FETCH_ENDPOINT = "https://api.fetch.tinyfish.ai"
@@ -146,7 +148,7 @@ class TinyFishClient:
         *,
         warn_fetch_errors: bool = True,
     ) -> None:
-        load_env()
+        load_dotenv()   # load_env()
         self.api_key = api_key or os.environ.get("TINYFISH_API_KEY")
         self.timeout = timeout
         self.warn_fetch_errors = warn_fetch_errors
@@ -604,17 +606,17 @@ def polite_pause(seconds: float = 12.5) -> None:
     time.sleep(seconds)
 
 
-def load_env(path: str = ".env") -> None:
-    if not os.path.exists(path):
-        return
+# def load_env(path: str = ".env") -> None:
+#     if not os.path.exists(path):
+#         return
 
-    with open(path, encoding="utf-8") as env_file:
-        for raw_line in env_file:
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key and key not in os.environ:
-                os.environ[key] = value
+#     with open(path, encoding="utf-8") as env_file:
+#         for raw_line in env_file:
+#             line = raw_line.strip()
+#             if not line or line.startswith("#") or "=" not in line:
+#                 continue
+#             key, value = line.split("=", 1)
+#             key = key.strip()
+#             value = value.strip().strip('"').strip("'")
+#             if key and key not in os.environ:
+#                 os.environ[key] = value

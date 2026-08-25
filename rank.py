@@ -50,7 +50,6 @@ BLOCKED_TERMS = (
     "rent",
 )
 
-
 @dataclass(frozen=True)
 class BookCandidate:
     title: str
